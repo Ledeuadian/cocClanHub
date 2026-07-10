@@ -1,0 +1,205 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Light mode (default, no .dark class on <html>) ──────────── */
+:root {
+  --clan-bg: #f1f5f9;
+  --clan-surface: #ffffff;
+  --clan-card: rgba(255, 255, 255, 0.72);
+  --clan-border: #e2e8f0;
+  --clan-dark: #f1f5f9;
+  --clan-darker: #e2e8f0;
+  --clan-text: #1e293b;
+  --clan-muted: #64748b;
+}
+
+/* ── Dark mode (.dark class on <html>) ──────────────────────── */
+.dark {
+  --clan-bg: #0f0f1e;
+  --clan-surface: #1a1a2e;
+  --clan-card: rgba(37, 37, 66, 0.72);
+  --clan-border: #34344e;
+  --clan-dark: #16213e;
+  --clan-darker: #0a0a14;
+  --clan-text: #e2e8f0;
+  --clan-muted: #94a3b8;
+}
+
+@layer base {
+  * {
+    @apply border-clan-border;
+  }
+
+  body {
+    @apply bg-clan-darker text-clan-text antialiased;
+    overscroll-behavior: none;
+    /* ── Layered background: radial glows + hex grid pattern ── */
+    background-color: var(--clan-bg);
+    background-image:
+      /* Top-right gold glow */
+      radial-gradient(at 100% 0%, rgba(245, 158, 11, 0.15) 0px, transparent 50%),
+      /* Bottom-left elixir glow */
+      radial-gradient(at 0% 100%, rgba(168, 85, 247, 0.12) 0px, transparent 50%),
+      /* Center top blue glow */
+      radial-gradient(at 50% 0%, rgba(59, 130, 246, 0.08) 0px, transparent 60%),
+      /* Subtle hex grid pattern */
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='70' viewBox='0 0 60 70'><path d='M30 0L60 17.32V52.68L30 70L0 52.68V17.32Z' fill='none' stroke='%23ffffff' stroke-opacity='0.04' stroke-width='1'/></svg>");
+    background-attachment: fixed, fixed, fixed, fixed;
+    background-size: auto, auto, auto, 60px 70px;
+    min-height: 100vh;
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(at 100% 0%, rgba(245, 158, 11, 0.12) 0px, transparent 50%),
+      radial-gradient(at 0% 100%, rgba(168, 85, 247, 0.15) 0px, transparent 50%),
+      radial-gradient(at 50% 50%, rgba(59, 130, 246, 0.06) 0px, transparent 60%),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='70' viewBox='0 0 60 70'><path d='M30 0L60 17.32V52.68L30 70L0 52.68V17.32Z' fill='none' stroke='%23ffffff' stroke-opacity='0.05' stroke-width='1'/></svg>");
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-clan-surface;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-clan-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-clan-muted;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95;
+  }
+  .btn-primary {
+    @apply btn bg-clan-accent text-clan-darker hover:bg-clan-gold shadow-lg shadow-clan-accent/20;
+  }
+  .btn-secondary {
+    @apply btn bg-clan-card text-clan-text border border-clan-border hover:border-clan-muted;
+  }
+  .btn-danger {
+    @apply btn bg-clan-danger text-white hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn text-clan-muted hover:text-clan-text hover:bg-clan-card;
+  }
+
+  /* ── Glassmorphism card ── */
+  .card {
+    background: var(--clan-card);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    @apply rounded-xl border border-clan-border p-4 shadow-lg shadow-black/5;
+  }
+  .dark .card {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .input {
+    @apply w-full bg-clan-surface border border-clan-border rounded-lg px-3 py-2 text-sm text-clan-text placeholder-clan-muted focus:outline-none focus:border-clan-accent focus:ring-2 focus:ring-clan-accent/20 transition-all;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .page-container {
+    @apply max-w-7xl mx-auto px-4 py-6 pb-24 md:pb-6;
+  }
+
+  .page-title {
+    @apply font-display text-2xl md:text-3xl font-bold text-clan-text;
+  }
+
+  .section-title {
+    @apply font-display text-lg font-semibold text-clan-text mb-3;
+  }
+}
+
+@layer utilities {
+  /* Animated glow orbs for auth/landing pages */
+  .glow-orb {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(60px);
+    opacity: 0.5;
+    animation: float 8s ease-in-out infinite;
+    pointer-events: none;
+  }
+  .glow-orb-delay {
+    animation-delay: -4s;
+  }
+  .glow-orb-slow {
+    animation-duration: 12s;
+  }
+
+  /* Gold shimmer text effect */
+  .text-gold-shimmer {
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #fbbf24 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer 3s ease-in-out infinite;
+  }
+
+  /* Subtle hover lift */
+  .hover-lift {
+    transition: transform 200ms ease, box-shadow 200ms ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -30px) scale(1.05); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+
+@keyframes shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes slideInRight {
+  0% { transform: translateX(110%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fadeOut {
+  0% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(110%); opacity: 0; }
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Reduced motion: disable animations */
+@media (prefers-reduced-motion: reduce) {
+  .glow-orb, .text-gold-shimmer {
+    animation: none;
+  }
+}
+
+/* Safe area for mobile PWA */
+@supports (padding: max(0px)) {
+  .safe-top {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+  }
+  .safe-bottom {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+}

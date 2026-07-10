@@ -1,0 +1,20 @@
+{
+  "name": "coc-clan-hub",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Clash of Clans Clan Hub - PWA for clan management, communication, and strategy",
+  "workspaces": [
+    "client",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=client\" \"npm run dev --workspace=backend\"",
+    "dev:client": "npm run dev --workspace=client",
+    "dev:backend": "npm run dev --workspace=backend",
+    "build": "npm run build --workspace=client",
+    "install:all": "npm install && npm install --workspace=client && npm install --workspace=backend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

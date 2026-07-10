@@ -1,0 +1,124 @@
+<!--
+Standalone icon generator — open this file in your browser to download
+PWA icons generated from favicon.svg.
+
+To use:
+1. Open this file in Chrome/Edge (just double-click)
+2. Click each "Download" button
+3. Save the files to `d:\COC clan App\client\public\icons\`
+   - icon-192.png
+   - icon-512.png
+   - icon-512-maskable.png
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PWA Icon Generator</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: #0f0f1e;
+      color: #e2e8f0;
+      padding: 40px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 { color: #fbbf24; }
+    button {
+      background: #f59e0b;
+      color: #0a0a14;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+      margin: 8px;
+    }
+    button:hover { background: #fbbf24; }
+    canvas { background: #0f0f1e; border-radius: 8px; padding: 8px; }
+    section { margin: 32px 0; padding: 24px; background: #1a1a2e; border-radius: 12px; }
+    pre { background: #252542; padding: 12px; border-radius: 6px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>🏰 COC Clan Hub — PWA Icon Generator</h1>
+  <p>This page renders <code>favicon.svg</code> at all PWA-required sizes and lets you download them as PNGs.</p>
+
+  <section>
+    <h2>1. icon-192.png — 192×192</h2>
+    <canvas id="c192" width="192" height="192"></canvas><br>
+    <button onclick="download('c192', 'icon-192.png')">Download icon-192.png</button>
+  </section>
+
+  <section>
+    <h2>2. icon-512.png — 512×512</h2>
+    <canvas id="c512" width="512" height="512"></canvas><br>
+    <button onclick="download('c512', 'icon-512.png')">Download icon-512.png</button>
+  </section>
+
+  <section>
+    <h2>3. icon-512-maskable.png — 512×512 (with safe zone for circular masks)</h2>
+    <canvas id="c512m" width="512" height="512"></canvas><br>
+    <button onclick="download('c512m', 'icon-512-maskable.png')">Download icon-512-maskable.png</button>
+  </section>
+
+  <section>
+    <h2>After downloading</h2>
+    <p>Move all 3 PNG files to: <code>d:\COC clan App\client\public\icons\</code></p>
+    <pre>Move-Item "$env:USERPROFILE\Downloads\icon-192.png" "d:\COC clan App\client\public\icons\"
+Move-Item "$env:USERPROFILE\Downloads\icon-512.png" "d:\COC clan App\client\public\icons\"
+Move-Item "$env:USERPROFILE\Downloads\icon-512-maskable.png" "d:\COC clan App\client\icons\"</pre>
+  </section>
+
+  <script>
+    // Inline the favicon SVG so this works offline
+    const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+      <rect width="64" height="64" rx="14" fill="#0f0f1e"/>
+      <path d="M32 10 L50 18 L50 34 C50 44 42 52 32 56 C22 52 14 44 14 34 L14 18 Z" fill="#f59e0b" fill-opacity="0.15" stroke="#f59e0b" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M32 10 L50 18 L50 34 C50 44 42 52 32 56 C22 52 14 44 14 34 L14 18 Z" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linejoin="round"/>
+      <text x="32" y="40" text-anchor="middle" font-family="Cinzel, serif" font-size="22" font-weight="700" fill="#f59e0b">CH</text>
+    </svg>`
+
+    const MASKABLE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+      <rect width="512" height="512" fill="#0f0f1e"/>
+      <g transform="translate(256, 256)">
+        <path d="M0 -160 L128 -112 L128 32 C128 96 64 144 0 176 C-64 144 -128 96 -128 32 L-128 -112 Z" fill="#f59e0b" fill-opacity="0.15" stroke="#f59e0b" stroke-width="8" stroke-linejoin="round"/>
+        <text x="0" y="30" text-anchor="middle" font-family="Cinzel, serif" font-size="100" font-weight="700" fill="#f59e0b">CH</text>
+      </g>
+    </svg>`
+
+    function render(canvasId, svgString, size) {
+      const canvas = document.getElementById(canvasId)
+      const ctx = canvas.getContext('2d')
+      const img = new Image()
+      const blob = new Blob([svgString], { type: 'image/svg+xml' })
+      const url = URL.createObjectURL(blob)
+      img.onload = () => {
+        ctx.clearRect(0, 0, size, size)
+        ctx.drawImage(img, 0, 0, size, size)
+        URL.revokeObjectURL(url)
+      }
+      img.src = url
+    }
+
+    function download(canvasId, filename) {
+      const canvas = document.getElementById(canvasId)
+      canvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+        URL.revokeObjectURL(url)
+      }, 'image/png')
+    }
+
+    // Render all icons on load
+    window.onload = () => {
+      render('c192', SVG, 192)
+      render('c512', SVG, 512)
+      render('c512m', MASKABLE_SVG, 512)
+    }
+  </script>
+</body>
+</html>

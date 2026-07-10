@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">COC Clan Hub</string>
+    <string name="title_activity_main">COC Clan Hub</string>
+    <string name="package_name">com.cocclanhub.app</string>
+    <string name="custom_url_scheme">com.cocclanhub.app</string>
+</resources>
