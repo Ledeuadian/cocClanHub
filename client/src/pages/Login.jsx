@@ -101,8 +101,13 @@ export default function Login() {
       <div className="relative w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-clan-accent via-clan-gold-dark to-clan-accent flex items-center justify-center mb-4 shadow-2xl shadow-clan-accent/30 hover-lift">
-            <Shield className="w-11 h-11 text-clan-darker" />
+          <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-4 hover-lift">
+            <img
+              src="/icons/android-chrome-192x192.png"
+              alt="Clan Hub logo"
+              className="w-20 h-20 object-contain"
+              draggable="false"
+            />
           </div>
           <h1 className="font-display text-4xl font-bold text-gold-shimmer">Clan Hub</h1>
           <p className="text-clan-muted text-sm mt-2">Your Clash of Clans clan headquarters</p>

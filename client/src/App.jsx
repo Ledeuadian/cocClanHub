@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import AppLayout from './components/layout/AppLayout.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import OnboardingGate from './components/OnboardingGate.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Members from './pages/Members.jsx'
 import Chat from './pages/Chat.jsx'
@@ -23,7 +24,7 @@ export default function App() {
       {/* Auth route (no layout, no protection) */}
       <Route path="/login" element={<Login />} />
 
-      {/* App routes (protected + onboarding gate) */}
+      {/* App routes (protected + onboarding gate + error safety) */}
       <Route
         element={
           <ProtectedRoute>
@@ -33,18 +34,18 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/members" element={<Members />} />
-        <Route path="/chat" element={<Chat />} />
-        <Route path="/wars" element={<Wars />} />
-        <Route path="/cwl" element={<CWLPlanner />} />
-        <Route path="/bases" element={<Bases />} />
-        <Route path="/strategies" element={<Strategies />} />
-        <Route path="/announcements" element={<Announcements />} />
-        <Route path="/calendar" element={<Calendar />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/admin" element={<AdminPanel />} />
+        <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+        <Route path="/members" element={<ErrorBoundary><Members /></ErrorBoundary>} />
+        <Route path="/chat" element={<ErrorBoundary><Chat /></ErrorBoundary>} />
+        <Route path="/wars" element={<ErrorBoundary><Wars /></ErrorBoundary>} />
+        <Route path="/cwl" element={<ErrorBoundary><CWLPlanner /></ErrorBoundary>} />
+        <Route path="/bases" element={<ErrorBoundary><Bases /></ErrorBoundary>} />
+        <Route path="/strategies" element={<ErrorBoundary><Strategies /></ErrorBoundary>} />
+        <Route path="/announcements" element={<ErrorBoundary><Announcements /></ErrorBoundary>} />
+        <Route path="/calendar" element={<ErrorBoundary><Calendar /></ErrorBoundary>} />
+        <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
+        <Route path="/settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+        <Route path="/admin" element={<ErrorBoundary><AdminPanel /></ErrorBoundary>} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

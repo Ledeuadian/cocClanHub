@@ -19,6 +19,7 @@ const ClanContext = createContext({
   clanTag: '',         // e.g. '#2G9Y2GGPJ'
   members: [],         // Array of clan members from COC
   warLog: [],          // Recent war results
+  warError: null,      // Specific error string for war-log loading (e.g. private)
   loading: true,
   error: null,
   refresh: () => {},
@@ -28,6 +29,7 @@ export function ClanProvider({ children }) {
   const [clan, setClan] = useState(null)
   const [members, setMembers] = useState([])
   const [warLog, setWarLog] = useState([])
+  const [warError, setWarError] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [clanTag, setClanTag] = useState('')
@@ -53,15 +55,32 @@ export function ClanProvider({ children }) {
       }
 
       // Step 2: fetch live clan data + members + war log in parallel
-      const [clanData, membersData, warLogData] = await Promise.all([
-        cocApi.getClan(tag).catch((e) => { throw e }),
-        cocApi.getClanMembers(tag).catch(() => ({ items: [] })),
-        cocApi.getWarLog(tag).catch(() => ({ items: [] }))
+      const [clanData, membersData, warLogResult] = await Promise.allSettled([
+        cocApi.getClan(tag),
+        cocApi.getClanMembers(tag),
+        cocApi.getWarLog(tag)
       ])
 
-      setClan(clanData)
-      setMembers(membersData.items || [])
-      setWarLog(warLogData.items || [])
+      if (clanData.status === 'fulfilled') setClan(clanData.value)
+      else throw clanData.reason
+
+      setMembers(
+        membersData.status === 'fulfilled' ? (membersData.value.items || []) : []
+      )
+
+      if (warLogResult.status === 'fulfilled') {
+        setWarLog(warLogResult.value.items || [])
+        setWarError(null)
+      } else {
+        setWarLog([])
+        const msg = warLogResult.reason?.message || 'Failed to load war log'
+        // 403 from the COC API usually means the clan's war log is set to Private in-game.
+        if (/403|forbidden|not authorized/i.test(msg)) {
+          setWarError('War log is private. Ask the clan leader to set War Log → Public in clan settings.')
+        } else {
+          setWarError(msg)
+        }
+      }
     } catch (e) {
       setError(e.message || 'Failed to load clan data')
       // Keep placeholder so UI doesn't crash
@@ -82,6 +101,7 @@ export function ClanProvider({ children }) {
         clanTag,
         members,
         warLog,
+        warError,
         loading,
         error,
         refresh

@@ -4,6 +4,7 @@ import Sidebar from './Sidebar.jsx'
 import MobileNav from './MobileNav.jsx'
 import Topbar from './Topbar.jsx'
 import InstallBanner from '../InstallBanner.jsx'
+import GsapScrollScene from '../GsapScrollScene.jsx'
 import { MobileNavProvider, useMobileNav } from '../../context/MobileNavContext.jsx'
 
 export default function AppLayout() {
@@ -40,9 +41,9 @@ function LayoutInner() {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
-        <main className="flex-1 overflow-y-auto">
+        <GsapScrollScene>
           <Outlet />
-        </main>
+        </GsapScrollScene>
         <MobileNav />
       </div>
       <InstallBanner />

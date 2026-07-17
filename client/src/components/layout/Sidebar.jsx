@@ -14,11 +14,13 @@ import {
 } from 'lucide-react'
 import { cn } from '../../lib/utils.js'
 import { useClan } from '../../context/ClanContext.jsx'
+import { useChat } from '../../context/ChatContext.jsx'
+import Avatar from '../ui/Avatar.jsx'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/members', label: 'Members', icon: Users },
-  { to: '/chat', label: 'Chat', icon: MessageSquare },
+  { to: '/chat', label: 'Chat', icon: MessageSquare, isChat: true },
   { to: '/wars', label: 'War Tracker', icon: Swords },
   { to: '/cwl', label: 'CWL Planner', icon: Shield },
   { to: '/bases', label: 'Base Layouts', icon: HomeIcon },
@@ -29,6 +31,19 @@ const navItems = [
 
 export default function Sidebar() {
   const { clan } = useClan()
+  const { threads, members } = useChat()
+
+  // Find the most recent unread DM thread for the badge
+  const mostRecentUnread = threads
+    .filter((t) => t.unread > 0)
+    .map((t) => ({
+      ...t,
+      user: members.find((m) => m.id === t.userId) || { name: t.userId[0] || '?', tag: t.userId }
+    }))
+    .sort((a, b) => (b.lastTime > a.lastTime ? 1 : -1))[0] || null
+
+  const totalUnread = threads.reduce((sum, t) => sum + (t.unread || 0), 0)
+
   return (
     <aside className="hidden md:flex flex-col w-60 bg-clan-surface/60 backdrop-blur-xl border-r border-clan-border h-screen sticky top-0 z-30">
       {/* Logo */}
@@ -51,7 +66,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
-        {navItems.map(({ to, label, icon: Icon }) => (
+        {navItems.map(({ to, label, icon: Icon, isChat }) => (
           <NavLink
             key={to}
             to={to}
@@ -65,7 +80,34 @@ export default function Sidebar() {
               )
             }
           >
-            <Icon className="w-4 h-4 shrink-0" />
+            {isChat ? (
+              <div className="relative shrink-0">
+                <Icon className="w-4 h-4" />
+                {totalUnread > 0 && (
+                  <>
+                    {/* Messenger-style: sender avatar of most recent unread */}
+                    {mostRecentUnread ? (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full border-2 border-clan-surface shadow-sm"
+                        title={`New from ${mostRecentUnread.user?.name || 'someone'}`}
+                      >
+                        <Avatar
+                          fallback={mostRecentUnread.user?.name?.[0] || '?'}
+                          size="xs"
+                          className="w-full h-full"
+                        />
+                      </span>
+                    ) : (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-0.5 rounded-full bg-clan-danger text-white text-[10px] font-bold flex items-center justify-center">
+                        {totalUnread}
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              <Icon className="w-4 h-4 shrink-0" />
+            )}
             {label}
           </NavLink>
         ))}

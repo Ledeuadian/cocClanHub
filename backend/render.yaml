@@ -1,0 +1,41 @@
+# Render Blueprint — deploys the backend as a Web Service.
+#
+# How to use:
+#   1. Push this repo to GitHub.
+#   2. Go to https://dashboard.render.com → New → Blueprint.
+#   3. Connect your GitHub repo.
+#   4. Render reads this file and creates the service automatically.
+#   5. Fill in the required env vars in the Render dashboard
+#      (or set them in the Environment section after creating the service).
+#
+# ⚠️  Render Blueprints cannot set secret values inline — you must add
+#     them manually in the Render dashboard (Environment → + Add Secret).
+
+services:
+  - type: web
+    name: coc-clan-hub-api
+    runtime: node
+    rootDir: backend          # Deploy from the backend/ folder
+    buildCommand: npm install
+    startCommand: node src/server.js
+    env: node
+    plan: free                # Change to 'starter' ($7/mo) for always-on
+    healthCheckPath: /        # Render pings GET / to keep the service alive
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Secrets: uncomment and set the value in the Render dashboard.
+      # Do NOT commit real values.
+      #
+      # - key: SUPABASE_URL
+      #   sync: false
+      # - key: SUPABASE_SERVICE_KEY
+      #   sync: false
+      # - key: COC_API_TOKEN
+      #   sync: false
+      # - key: COC_CLAN_TAG
+      #   value: #YOUR-CLAN-TAG
+      # - key: CLIENT_URL
+      #   value: https://your-frontend-domain.com
+      # - key: PORT
+      #   value: "5000"       # Render provides PORT automatically; only set if needed

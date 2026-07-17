@@ -72,6 +72,14 @@
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-clan-muted;
   }
+
+  /* Intro video overlay: keep the scrollbar invisible but functional so
+     mouse-wheel / arrow-key / trackpad scrolling still drives the scrub. */
+  .scroll-video-intro::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    background: transparent;
+  }
 }
 
 @layer components {

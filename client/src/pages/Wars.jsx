@@ -1,10 +1,38 @@
-import { Swords, Star, Target, CheckCircle2, XCircle, Clock } from 'lucide-react'
+import {
+  Swords,
+  Star,
+  Target,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  AlertCircle,
+  Lock,
+  Inbox,
+  RefreshCw,
+} from 'lucide-react'
 import Badge from '../components/ui/Badge.jsx'
 import ComingSoon from '../components/ui/ComingSoon.jsx'
 import { useClan } from '../context/ClanContext.jsx'
+import { useToast } from '../context/ToastContext.jsx'
+import { useEffect } from 'react'
 
 export default function Wars() {
-  const { warLog, loading } = useClan()
+  const { warLog, loading, warError, refresh } = useClan()
+  const { toast } = useToast()
+
+  // Surface the war-log error as a toast the first time we see it,
+  // so the user gets immediate feedback even if they don't scroll down.
+  // Wrapped in try/catch so a toast-context glitch can never crash the page.
+  useEffect(() => {
+    if (!warError) return
+    try {
+      toast?.warning?.('War log unavailable', String(warError), { duration: 6000 })
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[Wars] toast failed:', e)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warError])
 
   // COC warLog items have: { result, endTime, teamSize, opponent: { name, ... }, clan: { stars, destructionPercentage }, opponent: { stars } }
   // Note: when the opponent clan has their war log set to private, Supercell still
@@ -37,15 +65,23 @@ export default function Wars() {
         <div>
           <h1 className="page-title">War Tracker</h1>
           <p className="text-clan-muted text-sm">
-            {loading ? 'Loading…' : `Recent ${wars.length} wars · ${wins} wins · ${wars.length - wins} losses`}
+            {loading
+              ? 'Loading…'
+              : wars.length
+              ? `Recent ${wars.length} wars · ${wins} wins · ${wars.length - wins} losses`
+              : warError
+              ? 'War history unavailable'
+              : 'No wars recorded yet'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="success">
-            <CheckCircle2 className="w-3 h-3" />
-            {' '}Win Rate {wars.length ? Math.round((wins / wars.length) * 100) : 0}%
-          </Badge>
-        </div>
+        {wars.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Badge variant="success">
+              <CheckCircle2 className="w-3 h-3" />
+              {' '}Win Rate {Math.round((wins / wars.length) * 100)}%
+            </Badge>
+          </div>
+        )}
       </div>
 
       {/* Active War Summary (placeholder) */}
@@ -64,8 +100,72 @@ export default function Wars() {
       {/* War History */}
       <div className="space-y-3">
         <h2 className="section-title">War History</h2>
-        {wars.length === 0 && !loading && (
-          <p className="text-sm text-clan-muted text-center py-6">No war history yet.</p>
+
+        {/* ── War-log unavailable (private / API error) ────────────── */}
+        {warError && (
+          <div className="card border-amber-700/40 bg-amber-900/15">
+            <div className="flex items-start gap-3">
+              {/private|403|forbidden/i.test(warError) ? (
+                <Lock className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-amber-200">
+                  {/private|403|forbidden/i.test(warError)
+                    ? 'Clan war log is set to Private'
+                    : 'Could not load war log'}
+                </p>
+                <p className="text-xs text-amber-300/80 mt-1 leading-relaxed">
+                  {warError}
+                </p>
+                {/private|403|forbidden/i.test(warError) && (
+                  <ol className="text-xs text-amber-300/80 mt-2 space-y-1 list-decimal list-inside">
+                    <li>Open Clash of Clans and go to your clan.</li>
+                    <li>Tap the settings gear icon.</li>
+                    <li>
+                      Toggle <span className="font-semibold">War Log</span> to{' '}
+                      <span className="font-semibold">Public</span>.
+                    </li>
+                    <li>Come back here and tap Retry.</li>
+                  </ol>
+                )}
+                <button
+                  onClick={refresh}
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-200 hover:text-amber-100 underline underline-offset-2"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Retry
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── No wars returned (empty but no error) ───────────────── */}
+        {wars.length === 0 && !loading && !warError && (
+          <div className="card text-center py-8">
+            <Inbox className="w-8 h-8 text-clan-muted mx-auto mb-2" />
+            <p className="text-sm font-semibold text-clan-text">No war history yet</p>
+            <p className="text-xs text-clan-muted mt-1">
+              Once your clan finishes its first wars, the last 15 will appear here.
+            </p>
+            <button
+              onClick={refresh}
+              className="mt-3 btn-secondary !py-1.5 !px-3 text-xs"
+            >
+              Refresh
+            </button>
+          </div>
+        )}
+
+        {/* ── Loading skeleton ─────────────────────────────────────── */}
+        {loading && wars.length === 0 && (
+          <div className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="card animate-pulse h-24" />
+            ))}
+          </div>
         )}
         {wars.map((war) => (
           <div key={war.id} className="card hover:border-clan-muted transition-colors cursor-pointer">

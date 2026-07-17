@@ -15,11 +15,14 @@ import {
 import { Link } from 'react-router-dom'
 import StatCard from '../components/ui/StatCard.jsx'
 import Badge from '../components/ui/Badge.jsx'
+import ScrollVideoIntro from '../components/ScrollVideoIntro.jsx'
 import { useClan } from '../context/ClanContext.jsx'
 import { formatNumber } from '../lib/utils.js'
 
 export default function Dashboard() {
   const { clan, warLog, loading, error, refresh } = useClan()
+
+  // Play once per session, before the dashboard content becomes interactive.
 
   // Real recent wars (last 3) from the war log.
   // Drop entries with a private/anonymized opponent or unknown team size —
@@ -37,7 +40,9 @@ export default function Dashboard() {
     }))
 
   return (
-    <div className="page-container space-y-6">
+    <>
+      <ScrollVideoIntro />
+      <div className="page-container space-y-6">
       {/* Error banner */}
       {error && (
         <div className="text-sm text-amber-300 bg-amber-900/20 border border-amber-700/50 rounded-lg p-3 flex gap-2">
@@ -191,6 +196,7 @@ export default function Dashboard() {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
