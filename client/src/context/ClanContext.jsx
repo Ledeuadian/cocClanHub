@@ -38,30 +38,37 @@ export function ClanProvider({ children }) {
     setLoading(true)
     setError(null)
     try {
-      // Step 1: get the configured clan tag from the backend config
+      // Step 1: get the configured clan tag from the backend config.
+      // If the /test endpoint is unreachable (e.g. Render cold start,
+      // CORS issue, or offline), fall back to fetching the clan directly
+      // — the backend defaults to its own COC_CLAN_TAG env var.
       let tag = ''
       try {
         const meta = await cocApi.getTest()
         tag = meta?.coc_clan_tag || ''
-        setClanTag(tag)
       } catch {
-        // /test endpoint may not be reachable (backend offline)
+        // /test endpoint may not be reachable — try without explicit tag
       }
 
-      if (!tag) {
-        setClan(null)
-        setError('Clan tag not configured. Set COC_CLAN_TAG in backend/.env')
-        return
-      }
+      // If we got a tag from /test, use it. Otherwise fetch without a tag
+      // (backend will use its configured default).
+      if (tag) setClanTag(tag)
 
-      // Step 2: fetch live clan data + members + war log in parallel
+      // Step 2: fetch live clan data + members + war log in parallel.
+      // If no explicit tag, use 'default' — the backend will resolve to
+      // the COC_CLAN_TAG from its own .env.
+      const fetchTag = tag || 'default'
       const [clanData, membersData, warLogResult] = await Promise.allSettled([
-        cocApi.getClan(tag),
-        cocApi.getClanMembers(tag),
-        cocApi.getWarLog(tag)
+        cocApi.getClan(fetchTag),
+        cocApi.getClanMembers(fetchTag),
+        cocApi.getWarLog(fetchTag)
       ])
 
-      if (clanData.status === 'fulfilled') setClan(clanData.value)
+      if (clanData.status === 'fulfilled') {
+        setClan(clanData.value)
+        // If we didn't get the tag from /test, extract it from the clan data
+        if (!tag && clanData.value?.tag) setClanTag(clanData.value.tag)
+      }
       else throw clanData.reason
 
       setMembers(

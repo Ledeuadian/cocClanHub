@@ -10,6 +10,31 @@ router.use(cocApiLimiter)
 
 // ── Clan endpoints ───────────────────────────────────────────
 
+// Special route: no explicit tag — uses the backend's configured COC_CLAN_TAG.
+// Lets the frontend fetch the "default" clan without needing a /test round-trip.
+router.get('/clans/default', asyncHandler(async (_req, res) => {
+  const { config } = await import('../config/index.js')
+  if (!config.cocClanTag || config.cocClanTag === '#2PP00000') {
+    return res.status(404).json({
+      message: 'COC_CLAN_TAG not configured on the backend. Set it in your environment.'
+    })
+  }
+  const data = await cocService.getClan(config.cocClanTag)
+  res.json(data)
+}))
+
+router.get('/clans/default/members', asyncHandler(async (_req, res) => {
+  const { config } = await import('../config/index.js')
+  const data = await cocService.getClanMembers(config.cocClanTag)
+  res.json(data)
+}))
+
+router.get('/clans/default/warlog', asyncHandler(async (_req, res) => {
+  const { config } = await import('../config/index.js')
+  const data = await cocService.getWarLog(config.cocClanTag)
+  res.json(data)
+}))
+
 // Get clan info
 router.get('/clans/:tag', asyncHandler(async (req, res) => {
   const data = await cocService.getClan(req.params.tag)

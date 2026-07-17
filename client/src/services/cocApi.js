@@ -56,9 +56,11 @@ async function cocFetch(endpoint, options = {}) {
 export const cocApi = {
   /**
    * Get clan info by clan tag
-   * @param {string} tag - Clan tag with or without leading #
+   * @param {string} tag - Clan tag with or without leading #.
+   *   Pass 'default' to let the backend use its configured COC_CLAN_TAG.
    */
   getClan(tag) {
+    if (tag === 'default') return cocFetch('/clans/default')
     const encoded = encodeURIComponent(tag.replace('#', ''))
     return cocFetch(`/clans/${encoded}`)
   },
@@ -68,6 +70,7 @@ export const cocApi = {
    * @param {string} tag
    */
   getClanMembers(tag) {
+    if (tag === 'default') return cocFetch('/clans/default/members')
     const encoded = encodeURIComponent(tag.replace('#', ''))
     return cocFetch(`/clans/${encoded}/members`)
   },
@@ -77,6 +80,7 @@ export const cocApi = {
    * @param {string} tag
    */
   getWarLog(tag) {
+    if (tag === 'default') return cocFetch('/clans/default/warlog')
     const encoded = encodeURIComponent(tag.replace('#', ''))
     return cocFetch(`/clans/${encoded}/warlog`)
   },
