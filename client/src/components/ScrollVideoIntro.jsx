@@ -25,9 +25,10 @@ import { useEffect, useRef, useState } from 'react'
 
 const VIDEO_SRC = '/videos/intro.mp4'
 const MIN_SCROLL_HEIGHT = 1500
-const PX_PER_SECOND = 600              // how much scroll = how much video time
+const PX_PER_SECOND = 350              // lower = less seek work per pixel → smoother
 const PROGRESS_TO_DISMISS = 0.98       // ≥98 % scrolled → intro ends
 const SCROLL_STOP_DEBOUNCE_MS = 150    // pause the video after this much idle
+const SEEK_THRESHOLD_S = 0.04          // ignore sub-frame seek deltas (avoid decoder thrash)
 
 // localStorage keys
 const LS_LAST_SEEN = 'coc-intro-last-seen'
@@ -112,6 +113,8 @@ export default function ScrollVideoIntro() {
     // Track whether we already attempted unmuted playback (the first
     // scroll event is a user gesture, so it unlocks audio).
     let audioUnlocked = false
+    // rAF handle for the seek engine — hoisted so the cleanup closure can cancel it.
+    let rafId = null
 
     const finish = () => {
       if (done) return
@@ -130,8 +133,57 @@ export default function ScrollVideoIntro() {
       const height = Math.max(MIN_SCROLL_HEIGHT, Math.round(dur * PX_PER_SECOND))
       setSpacerHeight(height)
 
-      // Do NOT autoplay; wait for scroll.
+      // Keep the video paused — we drive time entirely via scroll.
+      // Calling play()/pause() during scrub forces the decoder to restart
+      // on every seek, which is the main cause of stutter on mobile.
       try { video.pause(); video.currentTime = 0 } catch {}
+
+      // ── rAF-coalesced seek engine ─────────────────────────────
+      // Multiple scroll events fire between frames. We coalesce them
+      // into a single seek per animation frame so the decoder is
+      // asked to seek at most once every ~16 ms.
+      let lastSeekTime = -Infinity    // last committed seek time
+
+      const commitSeek = () => {
+        rafId = null
+        if (done) return
+
+        const max = viewport.scrollHeight - viewport.clientHeight
+        if (max <= 0) return
+
+        const progress = Math.min(1, viewport.scrollTop / max)
+        const targetTime = dur * progress
+
+        // Hide hint after first meaningful scroll
+        if (progress > 0.01) setHint(false)
+
+        // Dismiss at ≥98% scrolled
+        if (progress >= PROGRESS_TO_DISMISS) {
+          clearTimeout(stopTimer)
+          finish()
+          return
+        }
+
+        // Only seek if the delta is large enough to matter.
+        // This avoids hammering the decoder with sub-frame seeks that
+        // aren't even visible on screen.
+        if (Math.abs(targetTime - lastSeekTime) >= SEEK_THRESHOLD_S) {
+          try { video.currentTime = targetTime } catch {}
+          lastSeekTime = targetTime
+
+          // After a seek, kick a single play() to let the browser decode
+          // the new frame. The video will pause again the next time the
+          // user stops scrolling. This is the standard "scrub" pattern
+          // used by scroll-driven video libraries.
+          if (video.paused) {
+            try {
+              video.muted = false
+              setMuted(false)
+              video.play().catch(() => {})
+            } catch {}
+          }
+        }
+      }
 
       const onScroll = () => {
         if (done) return
@@ -145,36 +197,13 @@ export default function ScrollVideoIntro() {
           } catch {}
         }
 
-        // Sync currentTime to scroll position
-        const max = viewport.scrollHeight - viewport.clientHeight
-        if (max > 0) {
-          const progress = Math.min(1, viewport.scrollTop / max)
-          try { video.currentTime = dur * progress } catch {}
+        // Coalesce — only request a new frame if one isn't pending
+        if (!rafId) rafId = requestAnimationFrame(commitSeek)
 
-          // Hide hint after first scroll
-          if (progress > 0.01) setHint(false)
-
-          // Dismiss at ≥98% scrolled
-          if (progress >= PROGRESS_TO_DISMISS) {
-            clearTimeout(stopTimer)
-            finish()
-            return
-          }
-        }
-
-        // While scrolling: resume playback at current time
-        if (video.paused) {
-          try {
-            video.muted = false
-            setMuted(false)
-            video.play().catch(() => {})
-          } catch {}
-        }
-
-        // Reset the "stop scrolling" timer
+        // Reset the "stop scrolling" debounce timer
         clearTimeout(stopTimer)
         stopTimer = setTimeout(() => {
-          // No scroll events for SCROLL_STOP_DEBOUNCE_MS → pause
+          // Idle — pause to free the decoder
           if (!done && !video.paused) {
             try { video.pause() } catch {}
           }
@@ -193,6 +222,7 @@ export default function ScrollVideoIntro() {
 
     return () => {
       clearTimeout(stopTimer)
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null }
       video.removeEventListener('loadedmetadata', onLoaded)
       video.removeEventListener('error', onErr)
       if (viewport.__onScroll) {
