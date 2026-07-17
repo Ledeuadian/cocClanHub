@@ -14,15 +14,49 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 /**
+ * fetch() wrapper with retry + timeout — survives Render free-tier cold starts.
+ * - First attempt: generous timeout (45s) to let Render spin up.
+ * - If it fails, retries up to 2 more times with a short delay.
+ */
+async function fetchWithRetry(url, options, maxRetries = 2) {
+  const fetchWithTimeout = async () => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 45000) // 45s for Render cold start
+    try {
+      return await fetch(url, { ...options, signal: controller.signal })
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
+
+  let lastErr
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fetchWithTimeout()
+    } catch (err) {
+      lastErr = err
+      // Don't retry on abort (timeout) of the last attempt
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 2000)) // wait 2s before retry
+      }
+    }
+  }
+  throw lastErr
+}
+
+/**
  * Helper for making authenticated requests to our backend.
  * The backend handles the COC API key securely.
+ *
+ * Retries on network failure to survive Render free-tier cold starts
+ * (the first request after idle can take 30–60s to wake the service).
  */
 async function cocFetch(endpoint, options = {}) {
   const url = `${API_BASE}/coc${endpoint}`
   if (import.meta.env.DEV) console.log('[cocApi] GET', url)
   let res
   try {
-    res = await fetch(url, {
+    res = await fetchWithRetry(url, {
       headers: {
         'Content-Type': 'application/json',
         ...options.headers
