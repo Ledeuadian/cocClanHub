@@ -40,6 +40,16 @@ app.use(cors({
     if (/^https?:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):\d+$/.test(origin)) {
       return callback(null, true)
     }
+    // Allow bare localhost (no port) — Capacitor's Android WebView sends
+    // `Origin: https://localhost` (Capacitor 6+) or `http://localhost` (≤5)
+    // when the app is loaded from the bundled assets, with no port suffix.
+    if (origin === 'https://localhost' || origin === 'http://localhost') {
+      return callback(null, true)
+    }
+    // Allow Capacitor scheme on the loopback IP variant (Capacitor 7+ on iOS)
+    if (origin === 'capacitor://localhost') {
+      return callback(null, true)
+    }
     callback(new Error(`CORS: origin ${origin} not allowed`))
   },
   credentials: true

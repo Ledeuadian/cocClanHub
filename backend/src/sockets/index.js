@@ -18,7 +18,22 @@ const channelMembers = new Map() // channelId -> Set<socketId>
 export function setupSocketServer(httpServer, corsOrigin) {
   const io = new Server(httpServer, {
     cors: {
-      origin: corsOrigin,
+      // Accept the configured origin plus Capacitor's WebView origin
+      // (https://localhost with no port — Capacitor 6+ serves the SPA there).
+      origin: (origin, cb) => {
+        if (!origin) return cb(null, true)
+        if (
+          origin === corsOrigin ||
+          origin === 'https://localhost' ||
+          origin === 'http://localhost' ||
+          origin === 'capacitor://localhost' ||
+          /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin) ||
+          /^https?:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):\d+$/.test(origin)
+        ) {
+          return cb(null, true)
+        }
+        cb(new Error(`CORS: origin ${origin} not allowed`))
+      },
       methods: ['GET', 'POST'],
       credentials: true
     },
