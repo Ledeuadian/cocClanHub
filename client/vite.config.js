@@ -3,10 +3,18 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
+// Capacitor (Android/iOS) builds skip the PWA service worker entirely.
+// Reason: the SW's navigation fallback intercepts cross-origin fetches in
+// the WebView, which makes every call to the Render backend / Supabase hang
+// and eventually time out (showing "Cannot reach backend"). Capacitor's
+// WebView is the only "host" we need on mobile — the SW is redundant and
+// harmful there. We keep the PWA on for browser/PWA install.
+const isCapacitorBuild = process.env.CAPACITOR === 'true'
+
 export default defineConfig({
   plugins: [
     react(),
-    VitePWA({
+    ...(isCapacitorBuild ? [] : [VitePWA({
       registerType: 'autoUpdate',
       // Enable PWA in dev too so the install prompt works while testing
       devOptions: {
@@ -72,7 +80,7 @@ export default defineConfig({
           }
         ]
       }
-    })
+    })])
   ],
   resolve: {
     alias: {

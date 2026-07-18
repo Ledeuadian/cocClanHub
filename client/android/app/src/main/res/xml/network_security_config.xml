@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security config for COC Clan Hub.
+
+  - System CAs are trusted for normal HTTPS traffic (the default).
+  - All app traffic uses HTTPS (cleartext stays disabled).
+  - Explicitly trusting these domains keeps Android's WebView happy
+    when the Capacitor app reaches out to the Render backend,
+    Supabase, and the Supercell API.
+-->
+<network-security-config>
+    <!-- Default: trust system CAs, no cleartext. -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Explicitly allow traffic to the production services the app talks to. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <!-- Render backend (REST API + Socket.IO) -->
+        <domain includeSubdomains="true">cocclanhub.onrender.com</domain>
+        <!-- Supabase (Auth, Realtime, Storage) -->
+        <domain includeSubdomains="true">qznlyjhmdfferxytfdxc.supabase.co</domain>
+        <!-- Supabase auth callback host -->
+        <domain includeSubdomains="true">supabase.co</domain>
+        <!-- Clash of Clans API (used indirectly via backend, listed for completeness) -->
+        <domain includeSubdomains="true">api.clashofclans.com</domain>
+        <!-- Local development (when running against a dev machine) -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

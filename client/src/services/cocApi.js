@@ -65,15 +65,17 @@ async function cocFetch(endpoint, options = {}) {
       ...options
     })
   } catch (err) {
+    // Only label it "Cannot reach backend" when fetch truly fails (network error / timeout).
+    // A 404 or 500 response does NOT enter this branch — it returns a Response object.
     throw new Error(`Cannot reach backend (${API_BASE}). Is the server running?`)
   }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }))
     // Map status codes to friendly messages
-    let msg = body.message || body.reason || `COC API error: ${res.status}`
+    let msg = body.message || body.reason || `Server error: ${res.status}`
     if (res.status === 404) {
-      msg = `Player or clan not found (tag may be wrong or the account is private).`
+      msg = `Route not found: ${endpoint}`
     } else if (res.status === 403) {
       msg = `COC API key not authorized for this IP. Check backend/Supercell setup.`
     } else if (res.status === 429) {
@@ -183,6 +185,10 @@ export const cocApi = {
   /**
    * Backend health check — returns the configured clan tag + API status.
    * Used by ClanContext to know which clan to fetch.
+   *
+   * cocFetch already prepends `/coc`, so passing `/test` here hits the right
+   * route: /api/coc/test. (Calling `/test` directly was 404'ing and being
+   * mis-labelled as "Cannot reach backend" — see error handling in cocFetch.)
    */
   getTest() {
     return cocFetch('/test')

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "_build_mobile_note": "On Windows: `$env:CAPACITOR='true'; npm run build`. On Mac/Linux: `CAPACITOR=true npm run build`.",
     "preview": "vite preview"
   },
   "dependencies": {

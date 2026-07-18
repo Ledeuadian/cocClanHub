@@ -30,7 +30,17 @@ export default function GsapScrollScene({ children }) {
     frame = requestAnimationFrame(() => {
       const elements = Array.from(
         root.querySelectorAll('.card, [data-scroll-3d]')
-      ).filter((el) => el.dataset.scroll3d !== 'off')
+      ).filter((el) => {
+        // Excluded by explicit data attribute
+        if (el.dataset.scroll3d === 'off') return false
+        // Excluded because it lives inside a <DashboardSection> which
+        // already manages its own GSAP entrance — double-animating the
+        // card would fight the section's own scrollTrigger.
+        if (el.closest('[data-scroll-3d="off"]')) return false
+        // Skip if already managed by a local <ScrollSection>.
+        if (el.closest('.will-change-transform')) return false
+        return true
+      })
 
       ctx = gsap.context(() => {
         elements.forEach((element, index) => {
