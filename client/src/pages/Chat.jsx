@@ -44,7 +44,7 @@ function ConversationView({ kind, id, title, subtitle, onBack }) {
   const otherUser = kind === 'dm' ? members.find(m => m.id === id) : null
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-clan-border bg-clan-surface/50 backdrop-blur">
         <button onClick={onBack} className="md:hidden btn-ghost !p-2" aria-label="Back">
@@ -77,7 +77,7 @@ function ConversationView({ kind, id, title, subtitle, onBack }) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
         {conversation.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-clan-muted">
             {kind === 'channel' ? (
@@ -233,9 +233,11 @@ export default function Chat() {
   return (
     <div
       className={cn(
-        'flex overflow-hidden transition-[height] duration-200',
-        mobileNavVisible ? 'h-[calc(100vh-7rem)]' : 'h-[calc(100vh-3.5rem)]',
-        'md:h-screen'
+        // Fill the flex parent (GsapScrollScene's <main>), which already
+        // excludes the Topbar height. Computing against 100vh double-counts
+        // the topbar and pushes the input form below the viewport.
+        // min-h-0 lets the flex chain actually shrink to fit.
+        'flex overflow-hidden min-h-0 h-full'
       )}
     >
       {/* Sidebar: Channels + DMs — hidden on mobile when a conversation is open */}
