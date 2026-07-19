@@ -34,6 +34,12 @@ const channelSubs = new Set()
 const dmSubs = new Set()
 const presenceSubs = new Set()
 
+// Identity queue: holds { tag, displayName } to emit as soon as the
+// socket reaches the 'connect' event. Solves the race where callers
+// invoke identify() right after connectSocket() — at that point the
+// client is still in the middle of the WebSocket handshake.
+const pendingIdentity = []  
+
 export function getSocket() {
   if (socket) return socket
 
@@ -49,6 +55,12 @@ export function getSocket() {
     connected = true
     // eslint-disable-next-line no-console
     console.log('[Socket.IO] Connected')
+    // Flush any queued identity — they're harmless on already-known
+    // sockets (the server just re-registers the same tag→socket mapping).
+    while (pendingIdentity.length) {
+      const { tag, displayName } = pendingIdentity.shift()
+      socket.emit('identity:set', { tag, displayName })
+    }
   })
 
   socket.on('disconnect', () => {
@@ -58,6 +70,7 @@ export function getSocket() {
   socket.on('connect_error', () => {
     connected = false
     // Backend not running — silent fail (Supabase will still work)
+    // But keep pendingIdentity so the next connect attempts will flush it.
   })
 
   // ── Socket.IO event fan-out ──────────────────────────────────
@@ -114,6 +127,22 @@ export function emitChannelMessage(channelId, text, userMeta = {}) {
   return false
 }
 
+/**
+ * Emit a channel message and wait for the server's acknowledgement.
+ * Resolves with `{ ok, id, created_at, error }`. Falls back to `{ ok: false }`
+ * if the socket isn't connected.
+ */
+export function emitChannelMessageWithAck(channelId, text, userMeta = {}) {
+  return new Promise((resolve) => {
+    if (!socket || !connected) return resolve({ ok: false, error: 'socket not connected' })
+    socket.emit('message:send', { channelId, text, ...userMeta }, (ack) => {
+      resolve(ack || { ok: false, error: 'no ack' })
+    })
+    // Safety net: server must respond within 10s
+    setTimeout(() => resolve({ ok: false, error: 'timeout' }), 10000)
+  })
+}
+
 export function startTyping(channelId) {
   if (socket && connected) socket.emit('typing:start', { channelId })
 }
@@ -134,6 +163,45 @@ export function emitDM(recipientTag, payload) {
     socket.emit('dm:send', { recipientTag, ...payload })
     return true
   }
+  return false
+}
+
+/**
+ * Emit a DM and wait for the server's acknowledgement.
+ * Resolves with `{ ok, id, created_at, error }`. Falls back to `{ ok: false }`
+ * if the socket isn't connected or senderTag is missing.
+ */
+export function emitDMWithAck(recipientTag, payload) {
+  return new Promise((resolve) => {
+    if (!socket || !connected) return resolve({ ok: false, error: 'socket not connected' })
+    if (!payload?.senderTag) return resolve({ ok: false, error: 'senderTag required' })
+    socket.emit('dm:send', { recipientTag, ...payload }, (ack) => {
+      resolve(ack || { ok: false, error: 'no ack' })
+    })
+    setTimeout(() => resolve({ ok: false, error: 'timeout' }), 10000)
+  })
+}
+
+/**
+ * Tell the server who we are. Without this, DMs can't be delivered to us.
+ *
+ * Safe to call repeatedly and safe to call BEFORE the socket is connected
+ * — the call is queued and flushed on the next 'connect' event. This is
+ * the most common bug-source for "my DM doesn't arrive": the caller
+ * invokes identify() right after connectSocket(), but the WebSocket
+ * handshake hasn't finished yet, so a synchronous emit is a no-op.
+ */
+export function identify({ tag, displayName } = {}) {
+  if (!tag) return false
+  if (socket && connected) {
+    socket.emit('identity:set', { tag, displayName })
+    return true
+  }
+  // Not yet connected — queue it. When the socket connects, the
+  // 'connect' handler above will flush the queue.
+  pendingIdentity.push({ tag, displayName })
+  // Make sure we actually try to connect.
+  connectSocket()
   return false
 }
 
@@ -311,7 +379,10 @@ export default {
   joinChannel,
   leaveChannel,
   emitChannelMessage,
+  emitChannelMessageWithAck,
   emitDM,
+  emitDMWithAck,
+  identify,
   startTyping,
   stopTyping,
   onChannelMessage,

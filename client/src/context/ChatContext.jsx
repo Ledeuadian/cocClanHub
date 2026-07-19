@@ -157,6 +157,11 @@ export function ChatProvider({ children }) {
   }, [])
 
   // ── 4. Helpers ──────────────────────────────────────────────────
+  // NOTE: formatTime / today must be declared BEFORE the effects that
+  // reference them (3c / 3d below) — `const` declarations live in the
+  // temporal dead zone until their initializer runs, which means a
+  // useEffect callback that closes over them earlier in the file would
+  // throw `Cannot access 'formatTime' before initialization` at mount.
   const formatTime = useCallback((date = new Date()) => {
     return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }, [])
@@ -167,6 +172,83 @@ export function ChatProvider({ children }) {
     if (d.toDateString() === new Date(Date.now() - 86400000).toDateString()) return 'Yesterday'
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
   }, [formatTime])
+
+  // ── 3b. Tell the Socket.IO server who we are (so it can route DMs to us) ──
+  // Re-runs whenever our tag changes (login / profile update).
+  useEffect(() => {
+    if (!me.tag) return
+    try { socketService.connectSocket() } catch { /* ignore */ }
+    socketService.identify({
+      tag: me.tag,
+      displayName: me.name
+    })
+  }, [me.tag, me.name])
+
+  // ── 3c. Load historical channel messages for each known channel ──
+  useEffect(() => {
+    if (!isSupabaseConfigured() || channels.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      for (const ch of channels) {
+        const rows = await socketService.loadChannelMessages(ch.id, 50)
+        if (cancelled || !rows?.length) continue
+        setMessages((prev) => {
+          // Merge only rows we haven't seen yet (de-dupes with optimistic local adds)
+          const known = new Set(prev.channels.map((m) => m.id))
+          const toAdd = rows
+            .filter((r) => !known.has(r.id))
+            .map((r) => ({
+              id: r.id,
+              channelId: r.channel_id,
+              author: r.author_id ? 'Member' : 'Member',
+              authorId: r.author_id,
+              text: r.text,
+              time: formatTime(r.created_at),
+              created_at: r.created_at
+            }))
+          if (toAdd.length === 0) return prev
+          return { ...prev, channels: [...prev.channels, ...toAdd] }
+        })
+      }
+    })()
+    return () => { cancelled = true }
+  }, [channels, formatTime])
+
+  // ── 3d. Load historical DMs whenever the roster / our tag changes ──
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !me.tag || members.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      const myTag = normalizeTag(me.tag)
+      // Only load DMs for members we already have a thread with
+      const tagsToLoad = Array.from(new Set([
+        ...threads.map((t) => normalizeTag(t.userId)),
+        ...members.map((m) => normalizeTag(m.tag))
+      ])).filter((t) => t && t !== myTag)
+
+      for (const otherTag of tagsToLoad) {
+        const rows = await socketService.loadDMs({ myTag, otherTag, limit: 50 })
+        if (cancelled || !rows?.length) continue
+        setMessages((prev) => {
+          const known = new Set(prev.dms.map((m) => m.id))
+          const toAdd = rows
+            .filter((r) => !known.has(r.id))
+            .map((r) => ({
+              id: r.id,
+              fromId: `#${r.sender_tag}`,
+              toId: `#${r.recipient_tag}`,
+              author: r.sender_name || `#${r.sender_tag}`,
+              text: r.text,
+              time: formatTime(r.created_at),
+              created_at: r.created_at
+            }))
+          if (toAdd.length === 0) return prev
+          return { ...prev, dms: [...prev.dms, ...toAdd] }
+        })
+      }
+    })()
+    return () => { cancelled = true }
+  }, [me.tag, members, threads, formatTime])
 
   // ── 5. Inbound handlers (Supabase + Socket.IO → state) ─────────
 
@@ -183,28 +265,33 @@ export function ChatProvider({ children }) {
   }, [me.id])
 
   const handleIncomingDM = useCallback((msg) => {
+    // Skip when payload is malformed
+    if (!msg) return
+
     const key = msg.id || `${msg.senderTag}:${msg.recipientTag}:${msg.created_at}:${msg.text}`
     if (seenIdsRef.current.has(String(key))) return
     markSeen(key)
-    // Skip our own sends
+
+    // Skip our own sends (compare canonical tag forms)
     if (msg.senderTag && me.tag && normalizeTag(msg.senderTag) === normalizeTag(me.tag)) return
 
     // Add the sender to the chat members list if they aren't there yet
     const senderTag = msg.senderTag ? `#${normalizeTag(msg.senderTag)}` : ''
-    setMembers((prev) => {
-      if (!senderTag) return prev
-      if (prev.find((m) => normalizeTag(m.tag) === normalizeTag(senderTag))) return prev
-      return [
-        ...prev,
-        {
-          id: senderTag,
-          name: msg.senderName || senderTag,
-          tag: senderTag,
-          role: 'member',
-          online: false
-        }
-      ]
-    })
+    if (senderTag) {
+      setMembers((prev) => {
+        if (prev.find((m) => normalizeTag(m.tag) === normalizeTag(senderTag))) return prev
+        return [
+          ...prev,
+          {
+            id: senderTag,
+            name: msg.senderName || senderTag,
+            tag: senderTag,
+            role: 'member',
+            online: false
+          }
+        ]
+      })
+    }
 
     receiveDM(senderTag, msg.text, { id: msg.id })
   }, [me.tag])
@@ -227,19 +314,27 @@ export function ChatProvider({ children }) {
       channels: [...prev.channels, localMsg]
     }))
 
-    // Persist (durable) + emit (low-latency) in parallel
-    const [persisted] = await Promise.all([
-      socketService.persistChannelMessage({ channelId, text, userId: me.id || null }),
-      Promise.resolve(socketService.emitChannelMessage(channelId, text, { userId: me.id, displayName: me.name }))
-    ])
-    if (persisted?.id) {
-      // Replace the local placeholder with the canonical row id so future
-      // echoes from Supabase de-dupe correctly.
-      markSeen(persisted.id)
+    // Emit to the server. The server persists to Supabase and broadcasts
+    // the canonical row back to all channel members (including this
+    // client via the message:new echo + the ack). We use the ack to
+    // replace the local placeholder id with the real row id so future
+    // echoes de-dupe correctly.
+    const ack = await socketService.emitChannelMessageWithAck(
+      channelId,
+      text,
+      { userId: me.id, displayName: me.name }
+    )
+    const canonicalId = ack?.ok ? ack.id : null
+    const created_at = ack?.ok ? ack.created_at : null
+
+    if (canonicalId) {
+      markSeen(canonicalId)
       setMessages((prev) => ({
         ...prev,
         channels: prev.channels.map((m) =>
-          m.id === localMsg.id ? { ...m, id: persisted.id } : m
+          m.id === localMsg.id
+            ? { ...m, id: canonicalId, created_at }
+            : m
         )
       }))
     }
@@ -249,14 +344,14 @@ export function ChatProvider({ children }) {
   // ── 7. Outbound: send DM ──────────────────────────────────────
   const sendDM = useCallback(async (toId, text) => {
     if (!text?.trim()) return null
-    const recipientTag = toId.startsWith('#') ? toId : `#${normalizeTag(toId)}`
-    const myTag = me.tag
+    const recipientTag = toId.startsWith('#') ? normalizeTag(toId) : normalizeTag(toId)
+    const myTag = normalizeTag(me.tag)
 
     // Optimistic local add
     const localMsg = {
       id: `local-${Date.now()}`,
       fromId: me.id,
-      toId: recipientTag,
+      toId: `#${recipientTag}`,
       author: me.name,
       text: text.trim(),
       time: formatTime()
@@ -268,38 +363,37 @@ export function ChatProvider({ children }) {
 
     // Update thread preview
     setThreads((prev) => {
-      const existing = prev.find((t) => t.userId === recipientTag)
+      const existing = prev.find((t) => t.userId === `#${recipientTag}`)
       const updated = {
-        id: recipientTag,
-        userId: recipientTag,
-        name: existing?.name || recipientTag,
-        tag: recipientTag,
+        id: `#${recipientTag}`,
+        userId: `#${recipientTag}`,
+        name: existing?.name || `#${recipientTag}`,
+        tag: `#${recipientTag}`,
         role: existing?.role || 'member',
         lastMessage: text.trim(),
         lastTime: 'now',
         unread: 0
       }
-      if (existing) return prev.map((t) => (t.userId === recipientTag ? updated : t))
+      if (existing) return prev.map((t) => (t.userId === `#${recipientTag}` ? updated : t))
       return [updated, ...prev]
     })
 
-    // Persist (durable) + emit (low-latency)
-    const [persisted] = await Promise.all([
-      myTag
-        ? socketService.persistDM({
-            senderTag: normalizeTag(myTag),
-            recipientTag: normalizeTag(recipientTag),
-            senderName: me.name,
-            text
-          })
-        : null,
-      Promise.resolve(socketService.emitDM(recipientTag, { text, senderName: me.name, senderTag: myTag }))
-    ])
-    if (persisted?.id) {
-      markSeen(persisted.id)
+    // Emit to the server. The server persists + routes to recipient sockets.
+    const ack = myTag
+      ? await socketService.emitDMWithAck(recipientTag, {
+          text,
+          senderTag: myTag,
+          senderName: me.name
+        })
+      : null
+
+    const canonicalId = ack?.ok ? ack.id : null
+    const created_at = ack?.ok ? ack.created_at : null
+    if (canonicalId) {
+      markSeen(canonicalId)
       setMessages((prev) => ({
         ...prev,
-        dms: prev.dms.map((m) => (m.id === localMsg.id ? { ...m, id: persisted.id } : m))
+        dms: prev.dms.map((m) => (m.id === localMsg.id ? { ...m, id: canonicalId, created_at } : m))
       }))
     }
     return localMsg

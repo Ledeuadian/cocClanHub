@@ -9,6 +9,7 @@
 import axios from 'axios'
 import NodeCache from 'node-cache'
 import { config } from '../config/index.js'
+import { getSupabaseAdmin } from '../config/supabase.js'
 
 const coc = axios.create({
   baseURL: config.cocApiBase,
@@ -21,6 +22,45 @@ const coc = axios.create({
 
 // Cache: short TTL to reduce upstream calls while keeping data fresh
 const cache = new NodeCache({ stdTTL: 300, checkperiod: 60 }) // 5 min default
+
+/**
+ * Build a COC-API-shaped member object from a row in clan_members_roster.
+ * Keeps the field names identical to the real API so downstream code
+ * never has to branch.
+ */
+function rosterRowToCOCMember(row) {
+  return {
+    tag: '#' + row.tag,
+    name: row.name,
+    role: row.role,
+    townHallLevel: row.town_hall,
+    trophies: row.trophies,
+    donations: row.donations,
+    // Mark synthetic rows so the UI can (optionally) distinguish them.
+    _dummy: row.is_dummy === true
+  }
+}
+
+/**
+ * Load the dev/dummy roster from Supabase. Returns [] if not configured.
+ */
+async function loadDummyRoster() {
+  try {
+    const supabase = getSupabaseAdmin()
+    if (!supabase) return []
+    const { data, error } = await supabase
+      .from('clan_members_roster')
+      .select('*')
+      .order('donations', { ascending: false })
+    if (error) {
+      console.warn('[cocService] dummy roster load failed:', error.message)
+      return []
+    }
+    return data || []
+  } catch (e) {
+    return []
+  }
+}
 
 /**
  * Generic GET with cache wrapper.
@@ -65,10 +105,33 @@ export const cocService = {
   },
 
   /**
-   * Get clan members list
+   * Get clan members list.
+   *
+   * In development, when the live COC API returns an empty list (e.g.
+   * the token isn't whitelisted, you're the only member, or you don't
+   * own 50 accounts to populate the clan), we fall back to the
+   * `clan_members_roster` table in Supabase. The merge keeps the
+   * response shape identical to the real COC API so callers don't
+   * need to branch.
    */
-  getClanMembers(tag = config.cocClanTag) {
-    return cachedGet(`/clans/${encodeTag(tag)}/members`, `members:${tag}`, 180)
+  async getClanMembers(tag = config.cocClanTag) {
+    try {
+      const live = await cachedGet(`/clans/${encodeTag(tag)}/members`, `members:${tag}`, 180)
+      const liveItems = live?.items || []
+      // Healthy live data → use as-is
+      if (liveItems.length > 0) return live
+    } catch (err) {
+      // Live API failed (no token, IP not whitelisted, etc.) — fall through.
+      console.warn('[cocService] live member fetch failed, using dummy roster:', err.message)
+    }
+
+    // Fall back to (or merge with) the dummy roster
+    const roster = await loadDummyRoster()
+    if (roster.length === 0) return { items: [] }
+
+    return {
+      items: roster.map(rosterRowToCOCMember)
+    }
   },
 
   /**

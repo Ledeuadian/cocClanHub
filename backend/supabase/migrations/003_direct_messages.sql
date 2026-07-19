@@ -7,6 +7,9 @@
 -- Run this in the Supabase SQL Editor, or via `supabase db push`.
 -- ═══════════════════════════════════════════════════════════════════
 
+-- gen_random_uuid() requires the pgcrypto extension
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS direct_messages (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   -- Canonical COC tags (uppercased, no leading #) — e.g. '2G9Y2GGPJ'
@@ -30,7 +33,12 @@ CREATE INDEX IF NOT EXISTS idx_dm_recipient
 -- include this table. The default publication covers all tables, but
 -- if it was removed, run:
 --   ALTER PUBLICATION supabase_realtime ADD TABLE direct_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE IF NOT EXISTS direct_messages;
+-- (Note: there's no IF NOT EXISTS on ALTER PUBLICATION ... ADD TABLE,
+-- so we wrap in a DO block to silently skip the duplicate-table case.)
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE direct_messages;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ── Row Level Security ───────────────────────────────────────────
 -- Server-side code uses the service-role key (bypasses RLS).
