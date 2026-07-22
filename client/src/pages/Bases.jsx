@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Plus, Home, Star, Search, X, Upload, Link as LinkIcon,
   Loader2, Image as ImageIcon, ExternalLink, Swords,
-  Wheat, Trophy, Layers, Trash2
+  Wheat, Trophy, Layers, Trash2, Lock
 } from 'lucide-react'
 import Badge from '../components/ui/Badge.jsx'
 import { supabase } from '../lib/supabase.js'
@@ -16,7 +16,7 @@ const TAGS = [
 ]
 
 export default function Bases() {
-  const { user, profile } = useAuth()
+  const { user, profile, isGuest } = useAuth()
   const [bases, setBases] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
@@ -106,6 +106,7 @@ export default function Bases() {
           <p className="text-clan-muted text-sm">Share and discover clan-approved bases</p>
         </div>
         <button className="btn-primary" onClick={() => {
+          if (isGuest) { alert('Please sign in to share a base layout.'); return }
           if (!user) { alert('Please sign in to share a base layout.'); return }
           setModalOpen(true)
         }}>
@@ -161,7 +162,7 @@ export default function Bases() {
                   <Home className="w-10 h-10 text-clan-muted/50" />
                 </div>
               )}
-              {base.link && (
+              {base.link && !isGuest && (
                 <a
                   href={base.link}
                   target="_blank"
@@ -218,7 +219,16 @@ export default function Bases() {
                     Delete
                   </button>
                 )}
-                {base.link ? (
+                {isGuest ? (
+                  <button
+                    type="button"
+                    onClick={() => alert('Sign in to copy base layouts.')}
+                    title="Members only"
+                    className="btn-secondary !py-1 !px-3 !text-xs !gap-1.5 cursor-not-allowed"
+                  >
+                    <Lock className="w-3 h-3" /> Use Layout
+                  </button>
+                ) : base.link ? (
                   <a
                     href={base.link}
                     target="_blank"

@@ -46,6 +46,9 @@ export default function OnboardingGate({ children }) {
   // Not signed in → let ProtectedRoute handle the redirect
   if (!user) return children
 
+  // Guests skip onboarding entirely — no COC link needed for browsing
+  if (user?.isGuest) return children
+
   // Fully onboarded → no gate
   if (passGate) return children
 

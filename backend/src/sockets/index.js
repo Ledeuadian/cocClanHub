@@ -9,7 +9,11 @@
  * - User presence (online status)
  * - Live war updates (broadcast from COC API poller)
  *
- * Auth: clients pass JWT via auth.token (sent in io({ auth: { token } }))
+ * Auth: clients pass a Supabase access token via auth.token
+ * (sent in io({ auth: { token } })). The middleware below verifies
+ * the token against Supabase and loads the user's profile so the
+ * server — not the client — decides which COC tag and display name
+ * belong to this socket. This prevents tag impersonation.
  */
 
 import { Server } from 'socket.io'
@@ -57,8 +61,77 @@ function deliverToTag(tag, event, payload) {
 // io is initialized later — hoist for the helper above.
 let io
 
+/**
+ * Socket.IO auth middleware.
+ *
+ * Verifies the Supabase JWT supplied in `socket.handshake.auth.token` and
+ * loads the user's profile row so the server can authoritatively resolve
+ * their COC player tag and display name. If Supabase isn't configured
+ * (local dev), we fall back to a permissive dev-user so chat still works.
+ *
+ * On success attaches:
+ *   socket.data.user      = Supabase auth user object
+ *   socket.data.userId    = user.id
+ *   socket.data.tag       = verified COC tag (without #, UPPERCASE)
+ *   socket.data.displayName = display name from the profile row
+ */
+async function authMiddleware(socket, next) {
+  const supabase = getSupabaseAdmin()
+
+  // Dev fallback — Supabase not configured; allow the connection
+  // with a synthetic identity so local development isn't blocked.
+  if (!supabase) {
+    socket.data.user = { id: 'dev-user', email: 'dev@local' }
+    socket.data.userId = 'dev-user'
+    socket.data.displayName = 'Dev User'
+    socket.data.tag = null
+    return next()
+  }
+
+  const token = socket.handshake.auth?.token
+  if (!token) {
+    return next(new Error('Unauthorized: missing auth token'))
+  }
+
+  try {
+    const { data, error } = await supabase.auth.getUser(token)
+    if (error || !data?.user) {
+      return next(new Error('Unauthorized: invalid or expired token'))
+    }
+
+    const user = data.user
+    socket.data.user = user
+    socket.data.userId = user.id
+
+    // Load the profile row to resolve the verified COC tag and display name.
+    // The client can NOT override these via identity:set — only the
+    // server-side profile is authoritative.
+    let tag = null
+    let displayName = user.email?.split('@')[0] || 'Member'
+    try {
+      const { data: profile, error: pErr } = await supabase
+        .from('profiles')
+        .select('coc_player_tag, display_name')
+        .eq('id', user.id)
+        .single()
+      if (!pErr && profile) {
+        tag = profile.coc_player_tag ? normalizeTag(profile.coc_player_tag) : null
+        if (profile.display_name) displayName = profile.display_name
+      }
+    } catch {
+      // Profile row may not exist yet — non-fatal, tag stays null.
+    }
+
+    socket.data.tag = tag
+    socket.data.displayName = displayName
+    next()
+  } catch (err) {
+    next(new Error(`Unauthorized: ${err.message || 'verification failed'}`))
+  }
+}
+
 export function setupSocketServer(httpServer, corsOrigin) {
-  const io = new Server(httpServer, {
+  io = new Server(httpServer, {
     cors: {
       // Accept the configured origin plus Capacitor's WebView origin
       // (https://localhost with no port — Capacitor 6+ serves the SPA there).
@@ -82,22 +155,40 @@ export function setupSocketServer(httpServer, corsOrigin) {
     pingTimeout: 30000
   })
 
+  // ── Auth gate ──────────────────────────────────────────
+  // Every incoming connection must pass a valid Supabase JWT.
+  // This runs BEFORE the 'connection' handler below.
+  io.use(authMiddleware)
+
   // ── Connection handling ─────────────────────────────────
   io.on('connection', (socket) => {
-    console.log(`[Socket.IO] Connected: ${socket.id}`)
+    console.log(`[Socket.IO] Connected: ${socket.id} (user=${socket.data.userId}, tag=${socket.data.tag || 'none'})`)
 
     // ── Identity ─────────────────────────────────────────
-    // The client identifies itself by COC player tag once it knows it
-    // (the user may already have a session before opening the chat).
-    socket.on('identity:set', ({ tag, displayName }) => {
-      registerTag(socket, tag)
-      socket.data.displayName = displayName || tag || 'Member'
-      // Notify the user's other sockets that this one is now online too
+    // The auth middleware already resolved the user's verified tag and
+    // display name from their Supabase profile. We register the tag
+    // immediately so DMs can be routed to this socket from the start.
+    //
+    // The legacy `identity:set` event is kept for backward-compatibility
+    // but the client-supplied tag is IGNORED — only the server-verified
+    // tag from the profile row is used. This prevents impersonation.
+    if (socket.data.tag) {
+      registerTag(socket, socket.data.tag)
       socket.broadcast.emit('presence:update', {
         type: 'user-online',
-        tag: normalizeTag(tag),
+        tag: socket.data.tag,
         displayName: socket.data.displayName
       })
+    }
+
+    socket.on('identity:set', ({ tag: _ignoredTag, displayName: _ignoredName }) => {
+      // No-op: the verified tag + displayName from the auth middleware
+      // are authoritative. We log the attempt for auditability.
+      console.debug(
+        `[Socket.IO] identity:set ignored (client attempted tag=${_ignoredTag}, ` +
+        `name=${_ignoredName}); using verified tag=${socket.data.tag}, ` +
+        `name=${socket.data.displayName}`
+      )
     })
 
     // ── Channel management ───────────────────────────────

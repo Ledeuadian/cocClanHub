@@ -38,17 +38,48 @@ const presenceSubs = new Set()
 // socket reaches the 'connect' event. Solves the race where callers
 // invoke identify() right after connectSocket() — at that point the
 // client is still in the middle of the WebSocket handshake.
-const pendingIdentity = []  
+//
+// NOTE: Since JWT auth was added to the handshake, the server resolves
+// the verified tag + displayName from the Supabase profile row and
+// IGNORES the values sent via identity:set. We keep the queue for
+// backward compatibility but the fields are no longer authoritative.
+const pendingIdentity = []
+
+/**
+ * Fetch the current Supabase access token.
+ * Returns null if there is no active session (guest, signed-out, or
+ * Supabase not configured). The server treats a null token as a
+ * rejection in non-dev environments; the client simply won't connect.
+ */
+async function getAccessToken() {
+  if (!isSupabaseConfigured()) return null
+  try {
+    const { data } = await supabase.auth.getSession()
+    return data?.session?.access_token || null
+  } catch {
+    return null
+  }
+}
 
 export function getSocket() {
   if (socket) return socket
 
+  // Build the socket with a current access token at construction time.
+  // Socket.IO sends `auth` as the handshake payload, so we resolve it
+  // before instantiation. If there is no session (guest), we pass an
+  // empty string — the server's auth middleware will reject the
+  // connection with 'Unauthorized' and the client falls back to
+  // Supabase Realtime for chat.
   socket = io(SOCKET_URL, {
     autoConnect: false,
     reconnection: true,
     reconnectionAttempts: 3,
     reconnectionDelay: 1000,
-    transports: ['websocket', 'polling']
+    transports: ['websocket', 'polling'],
+    auth: async (cb) => {
+      const token = await getAccessToken()
+      cb({ token: token || '' })
+    }
   })
 
   socket.on('connect', () => {
@@ -67,10 +98,19 @@ export function getSocket() {
     connected = false
   })
 
-  socket.on('connect_error', () => {
+  socket.on('connect_error', (err) => {
     connected = false
-    // Backend not running — silent fail (Supabase will still work)
-    // But keep pendingIdentity so the next connect attempts will flush it.
+    // Auth rejection from the server (expired/invalid token, or guest).
+    // Don't keep hammering with reconnection — fall back to Supabase
+    // Realtime and let the user re-trigger by signing in again.
+    if (err?.message?.startsWith('Unauthorized')) {
+      // eslint-disable-next-line no-console
+      console.warn('[Socket.IO] Auth rejected by server:', err.message)
+      socket.io.reconnection(false)
+      return
+    }
+    // Backend not running — silent fail (Supabase will still work).
+    // Keep pendingIdentity so a future reconnect can flush it.
   })
 
   // ── Socket.IO event fan-out ──────────────────────────────────
@@ -98,7 +138,17 @@ export function getSocket() {
 
 export function connectSocket() {
   const sock = getSocket()
-  if (!sock.connected) sock.connect()
+  if (sock.connected) return
+  // Refresh the JWT before each (re)connect — the token may have been
+  // rotated since the socket was constructed (e.g. user just signed
+  // in, or Supabase auto-refreshed).
+  sock.auth = async (cb) => {
+    const token = await getAccessToken()
+    cb({ token: token || '' })
+  }
+  // Re-enable reconnection in case a previous auth rejection disabled it.
+  sock.io.reconnection(true)
+  sock.connect()
 }
 
 export function disconnectSocket() {
@@ -185,11 +235,14 @@ export function emitDMWithAck(recipientTag, payload) {
 /**
  * Tell the server who we are. Without this, DMs can't be delivered to us.
  *
+ * Since JWT auth was added to the handshake, the server resolves the
+ * user's tag and display name from their Supabase profile row (see
+ * backend/src/sockets/index.js authMiddleware). The values passed here
+ * are now informational only — the server ignores them and uses the
+ * verified profile. We keep the call for backward compatibility.
+ *
  * Safe to call repeatedly and safe to call BEFORE the socket is connected
- * — the call is queued and flushed on the next 'connect' event. This is
- * the most common bug-source for "my DM doesn't arrive": the caller
- * invokes identify() right after connectSocket(), but the WebSocket
- * handshake hasn't finished yet, so a synchronous emit is a no-op.
+ * — the call is queued and flushed on the next 'connect' event.
  */
 export function identify({ tag, displayName } = {}) {
   if (!tag) return false

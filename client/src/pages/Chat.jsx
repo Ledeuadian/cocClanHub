@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Hash, Send, Paperclip, Smile, Search, Plus,
-  MessageCircle, Phone, Video, Info, ArrowLeft
+  MessageCircle, Phone, Video, Info, ArrowLeft, Lock
 } from 'lucide-react'
 import { useChat } from '../context/ChatContext.jsx'
 import { useMobileNav } from '../context/MobileNavContext.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
 import Avatar from '../components/ui/Avatar.jsx'
 import RoleBadge from '../components/ui/RoleBadge.jsx'
 import { cn } from '../lib/utils.js'
@@ -181,6 +182,7 @@ function ConversationView({ kind, id, title, subtitle, onBack }) {
 
 export default function Chat() {
   const { channels, threads, members, markThreadRead, openDMWith } = useChat()
+  const { isGuest } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   // Default to the first available channel, or null if none loaded yet.
   const [activeView, setActiveView] = useState(() => ({ kind: 'channel', id: channels[0]?.id || null }))
@@ -194,7 +196,7 @@ export default function Chat() {
   // various places (Members page, profile, etc.) all resolve the IGN.
   useEffect(() => {
     const dmTagRaw = searchParams.get('dm')
-    if (!dmTagRaw) return
+    if (!dmTagRaw || isGuest) return // guests cannot DM
     const dmTag = `#${dmTagRaw.replace(/^#/, '').toUpperCase()}`
     const known = members.find((m) => (m.tag || '').replace(/^#/, '').toUpperCase() === dmTag.slice(1))
     const member = known || { name: 'Unknown player', tag: dmTag, role: 'member' }
@@ -205,7 +207,7 @@ export default function Chat() {
     const next = new URLSearchParams(searchParams)
     next.delete('dm')
     setSearchParams(next, { replace: true })
-  }, [searchParams, members, openDMWith, setSearchParams])
+  }, [searchParams, members, openDMWith, setSearchParams, isGuest])
 
   const openView = (view) => {
     setActiveView(view)
@@ -294,63 +296,85 @@ export default function Chat() {
           ))}
         </nav>
 
-        {/* Direct Messages */}
-        <div className="px-3 pt-4 pb-1 flex items-center justify-between">
-          <h2 className="font-display text-xs font-bold text-clan-muted uppercase tracking-wider">Direct Messages</h2>
-          <button onClick={() => setShowNewDM(true)} className="btn-ghost !p-1" title="New DM">
-            <Plus className="w-3 h-3" />
-          </button>
-        </div>
-        <nav className="flex-1 px-2 space-y-0.5 overflow-y-auto pb-2">
-          {threads
-            .filter(t => {
-              if (!search) return true
-              const m = members.find(mm => mm.id === t.userId)
-              return m?.name.toLowerCase().includes(search.toLowerCase())
-            })
-            .map((thread) => {
-            const user = members.find(m => m.id === thread.userId)
-            if (!user) return null
-            return (
-              <button
-                key={thread.id}
-                onClick={() => handleSelectThread(thread.userId)}
-                className={cn(
-                  'flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-sm transition-colors',
-                  activeView.kind === 'dm' && activeView.id === thread.userId
-                    ? 'bg-clan-card text-clan-text'
-                    : 'text-clan-muted hover:text-clan-text hover:bg-clan-card/50'
-                )}
-              >
-                <div className="relative shrink-0">
-                  <Avatar fallback={user.name[0]} size="sm" />
-                  {user.online && (
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-clan-success border-2 border-clan-surface rounded-full" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0 text-left">
-                  <p className="text-sm font-medium truncate">{user.name}</p>
-                  <p className="text-xs text-clan-muted truncate">{thread.lastMessage}</p>
-                </div>
-                <div className="flex flex-col items-end gap-0.5 shrink-0">
-                  <span className="text-[10px] text-clan-muted">{thread.lastTime}</span>
-                  {thread.unread > 0 && (
-                    <span className="badge bg-clan-accent text-clan-darker !px-1.5 !text-[10px]">
-                      {thread.unread}
-                    </span>
-                  )}
-                </div>
+        {/* Direct Messages (hidden for guests) */}
+        {!isGuest && (
+          <>
+            <div className="px-3 pt-4 pb-1 flex items-center justify-between">
+              <h2 className="font-display text-xs font-bold text-clan-muted uppercase tracking-wider">Direct Messages</h2>
+              <button onClick={() => setShowNewDM(true)} className="btn-ghost !p-1" title="New DM">
+                <Plus className="w-3 h-3" />
               </button>
-            )
-          })}
-
-          {threads.length === 0 && (
-            <div className="text-center py-6 text-clan-muted text-xs">
-              <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              No DMs yet
             </div>
-          )}
-        </nav>
+            <nav className="flex-1 px-2 space-y-0.5 overflow-y-auto pb-2">
+              {threads
+                .filter(t => {
+                  if (!search) return true
+                  const m = members.find(mm => mm.id === t.userId)
+                  return m?.name.toLowerCase().includes(search.toLowerCase())
+                })
+                .map((thread) => {
+                const user = members.find(m => m.id === thread.userId)
+                if (!user) return null
+                return (
+                  <button
+                    key={thread.id}
+                    onClick={() => handleSelectThread(thread.userId)}
+                    className={cn(
+                      'flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-sm transition-colors',
+                      activeView.kind === 'dm' && activeView.id === thread.userId
+                        ? 'bg-clan-card text-clan-text'
+                        : 'text-clan-muted hover:text-clan-text hover:bg-clan-card/50'
+                    )}
+                  >
+                    <div className="relative shrink-0">
+                      <Avatar fallback={user.name[0]} size="sm" />
+                      {user.online && (
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-clan-success border-2 border-clan-surface rounded-full" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 text-left">
+                      <p className="text-sm font-medium truncate">{user.name}</p>
+                      <p className="text-xs text-clan-muted truncate">{thread.lastMessage}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                      <span className="text-[10px] text-clan-muted">{thread.lastTime}</span>
+                      {thread.unread > 0 && (
+                        <span className="badge bg-clan-accent text-clan-darker !px-1.5 !text-[10px]">
+                          {thread.unread}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+
+              {threads.length === 0 && (
+                <div className="text-center py-6 text-clan-muted text-xs">
+                  <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  No DMs yet
+                </div>
+              )}
+            </nav>
+          </>
+        )}
+
+        {/* Guest hint in the chat sidebar */}
+        {isGuest && (
+          <div className="mt-auto px-3 pb-3">
+            <div className="rounded-lg bg-clan-card border border-clan-border p-3 text-xs text-clan-muted space-y-1">
+              <div className="flex items-center gap-2 text-clan-accent font-medium">
+                <Lock className="w-3.5 h-3.5" />
+                Direct messages are locked
+              </div>
+              <p>
+                Guests can chat in public channels but can't DM other members.
+                <a href="/login" className="text-clan-accent hover:text-clan-gold ml-1 underline">
+                  Sign in →
+                </a>
+              </p>
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* Active conversation — only show if a channel/DM is selected */}

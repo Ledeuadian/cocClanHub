@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Search, Bell, Sun, Moon, Shield, MessageCircle, Hash, User, Users, ArrowLeft } from 'lucide-react'
+import { Search, Bell, Sun, Moon, Shield, MessageCircle, Hash, User, Users, ArrowLeft, Eye } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useTheme } from '../../context/ThemeContext.jsx'
 import { useChat } from '../../context/ChatContext.jsx'
@@ -10,7 +10,7 @@ import { timeAgo } from '../../lib/utils.js'
 import { adminApi } from '../../services/adminApi.js'
 
 export default function Topbar() {
-  const { user, profile, signOut } = useAuth()
+  const { user, profile, signOut, isGuest } = useAuth()
   const { theme, toggle } = useTheme()
   const { threads, channels, members, markThreadRead } = useChat()
   const { clan } = useClan()
@@ -89,6 +89,18 @@ export default function Topbar() {
 
         {/* Right actions */}
         <div className="flex items-center gap-2">
+          {/* Guest indicator badge */}
+          {isGuest && (
+            <button
+              onClick={() => navigate('/login')}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-clan-accent/15 border border-clan-accent/30 text-clan-accent text-xs font-medium hover:bg-clan-accent/25 transition-colors"
+              title="You are browsing as a guest. Click to sign in."
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Guest</span>
+            </button>
+          )}
+
           <button onClick={toggle} className="btn-ghost !p-2">
             {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
           </button>
@@ -188,7 +200,7 @@ export default function Topbar() {
               {user ? (
                 <Avatar
                   src={profile?.avatar_url}
-                  fallback={profile?.display_name?.[0] || user.email?.[0]?.toUpperCase() || '?'}
+                  fallback={isGuest ? 'G' : profile?.display_name?.[0] || user.email?.[0]?.toUpperCase() || '?'}
                   size="sm"
                 />
               ) : (

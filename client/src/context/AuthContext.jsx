@@ -1,11 +1,37 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase.js'
 
+/* ── Guest identity ──────────────────────────────────────────── */
+const GUEST_USER_KEY = 'coc_guest_user'
+
+function loadGuestUser() {
+  try {
+    const raw = localStorage.getItem(GUEST_USER_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+
+function createGuestUser() {
+  const guest = {
+    id: `guest-${Date.now()}`,
+    isGuest: true,
+    email: null,
+    user_metadata: { display_name: 'Guest' }
+  }
+  try { localStorage.setItem(GUEST_USER_KEY, JSON.stringify(guest)) } catch { /* */ }
+  return guest
+}
+
+function clearGuestUser() {
+  try { localStorage.removeItem(GUEST_USER_KEY) } catch { /* */ }
+}
+
 const AuthContext = createContext({
   user: null,
   profile: null,
   loading: true,
-  signOut: async () => {}
+  signOut: async () => {},
+  signInAsGuest: () => {}
 })
 
 export function AuthProvider({ children }) {
@@ -14,6 +40,14 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Restore guest session first so guests persist across reloads.
+    const guest = loadGuestUser()
+    if (guest) {
+      setUser(guest)
+      setLoading(false)
+      return
+    }
+
     if (!isSupabaseConfigured()) {
       // Mock auth state for development without Supabase
       setLoading(false)
@@ -30,6 +64,8 @@ export function AuthProvider({ children }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        // Real Supabase sign-in always wins over a cached guest session.
+        if (session?.user) clearGuestUser()
         setUser(session?.user ?? null)
         if (session?.user) await loadProfile(session.user.id)
         else setProfile(null)
@@ -65,16 +101,30 @@ export function AuthProvider({ children }) {
     await loadProfile(user.id)
   }
 
+  /**
+   * Start a guest session — no Supabase account required.
+   * Guests can browse but are blocked from DMs, base copying, CWL, and strategies.
+   */
+  function signInAsGuest() {
+    const guest = createGuestUser()
+    setUser(guest)
+    setProfile(null) // guests have no profile row
+  }
+
   async function signOut() {
-    if (isSupabaseConfigured()) {
+    if (user?.isGuest) {
+      clearGuestUser()
+    } else if (isSupabaseConfigured()) {
       await supabase.auth.signOut()
     }
     setUser(null)
     setProfile(null)
   }
 
+  const isGuest = !!user?.isGuest
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, isGuest, signOut, refreshProfile, signInAsGuest }}>
       {children}
     </AuthContext.Provider>
   )

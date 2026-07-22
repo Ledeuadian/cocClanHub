@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Trophy, Search, Plus, ExternalLink } from 'lucide-react'
 import Badge from '../components/ui/Badge.jsx'
+import GuestBlocker from '../components/GuestBlocker.jsx'
 import { supabase } from '../lib/supabase.js'
 
 export default function Strategies() {
@@ -23,7 +24,11 @@ export default function Strategies() {
     return () => { cancelled = true }
   }, [])
   return (
-    <div className="page-container space-y-6">
+    <GuestBlocker
+      title="Members Only"
+      message="Attack strategies are available to signed-in clan members. Sign in or create a free account to learn and share attack compositions."
+    >
+      <div className="page-container space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Attack Strategies</h1>
@@ -94,5 +99,6 @@ export default function Strategies() {
         </div>
       </div>
     </div>
+    </GuestBlocker>
   )
 }

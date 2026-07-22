@@ -71,7 +71,7 @@ function SortHeader({ column, sortKey, sortDir, onSort }) {
 
 export default function Members() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, isGuest } = useAuth()
   const { members: clanMembers, loading } = useClan()
   const [search, setSearch]   = useState('')
   const [sortKey, setSortKey] = useState('role')   // default: Leader at top
@@ -157,6 +157,7 @@ export default function Members() {
   )
 
   const startDM = (member) => {
+    if (isGuest) { navigate('/login'); return } // guests: redirect to sign-in
     if (!member?.tag) return
     // Don't allow DMs to yourself
     if (user && user.user_metadata?.coc_player_tag === member.tag) return
@@ -259,7 +260,7 @@ export default function Members() {
                   key={m.tag || m.name}
                   onClick={() => startDM(m)}
                   className={`transition-colors cursor-pointer hover:bg-clan-surface/60 ${isSelf ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  title={isSelf ? "That's you" : 'Click to start a DM'}
+                  title={isSelf ? "That's you" : isGuest ? 'Sign in to DM members' : 'Click to start a DM'}
                 >
                   <td className="px-4 py-3 text-clan-muted text-sm">{i + 1}</td>
                   <td className="px-4 py-3">
@@ -316,9 +317,9 @@ export default function Members() {
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); startDM(m) }}
-                      disabled={!!isSelf}
+                      disabled={!!isSelf || isGuest}
                       className="btn-secondary !py-1 !px-2 text-xs inline-flex items-center gap-1 disabled:opacity-50"
-                      title={isSelf ? "That's you" : 'Send a DM'}
+                      title={isGuest ? 'Sign in to DM members' : isSelf ? "That's you" : 'Send a DM'}
                     >
                       <MessageCircle className="w-3 h-3" /> DM
                     </button>
@@ -341,7 +342,7 @@ export default function Members() {
               key={m.tag || m.name}
               type="button"
               onClick={() => startDM(m)}
-              disabled={!!isSelf}
+              disabled={!!isSelf || isGuest}
               className={`w-full text-left card transition-colors hover:border-clan-accent/50 active:scale-[0.99] disabled:opacity-50`}
             >
               <div className="flex items-start gap-3">

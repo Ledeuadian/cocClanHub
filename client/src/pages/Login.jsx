@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react'
-import { Mail, Lock, Shield, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Mail, Lock, Shield, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2, User, Hash, KeyRound } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { supabase, isSupabaseConfigured } from '../lib/supabase.js'
+import { signUpWithCocTag, signInWithCocTag, isCocTagAuthAvailable } from '../services/cocAuth.js'
 
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, loading } = useAuth()
+  const { user, loading, signInAsGuest } = useAuth()
 
-  const [mode, setMode] = useState('signin') // 'signin' | 'signup' | 'forgot' | 'check-email'
+  const [mode, setMode] = useState('signin') // 'signin' | 'signup' | 'forgot' | 'check-email' | 'coc-signup' | 'coc-signin'
+  const [cocAuthAvailable, setCocAuthAvailable] = useState(false)
+  // COC-tag flow inputs
+  const [cocTag, setCocTag] = useState('')
+  const [cocApiToken, setCocApiToken] = useState('')
+  const [showApiToken, setShowApiToken] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -24,6 +30,12 @@ export default function Login() {
       navigate(location.state?.from || '/', { replace: true })
     }
   }, [user, loading, navigate, location.state])
+
+  // Probe the backend for whether COC tag-based auth is configured.
+  // (Both Supabase and the COC API need to be set up server-side.)
+  useEffect(() => {
+    isCocTagAuthAvailable().then(setCocAuthAvailable).catch(() => setCocAuthAvailable(false))
+  }, [])
 
   // Where to redirect after login
   const redirectTo = location.state?.from || '/profile?onboard=1'
@@ -61,6 +73,36 @@ export default function Login() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
+        navigate(redirectTo)
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // ── COC tag submit (signup OR signin) ─────────────────────
+  // We branch on mode inside because both use the same form below.
+  const handleCocSubmit = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setInfo(null)
+    setSubmitting(true)
+    try {
+      if (mode === 'coc-signup') {
+        await signUpWithCocTag({
+          tag: cocTag,
+          password,
+          api_token: cocApiToken,
+          display_name: displayName
+        })
+        // Signup is one-shot: tag + token are verified, account created,
+        // session returned — straight to the app, no email step.
+        navigate(redirectTo)
+      } else {
+        // coc-signin
+        await signInWithCocTag({ tag: cocTag, password })
         navigate(redirectTo)
       }
     } catch (err) {
@@ -279,6 +321,181 @@ export default function Login() {
                   )}
                 </button>
               </form>
+
+              {/* ── COC TAG SIGN IN / SIGN UP ─────────────── */}
+              {/* Only render this section if the backend confirms the */}
+              {/* COC API + Supabase are both configured. */}
+              {cocAuthAvailable && (
+                <>
+                  <div className="relative pt-2">
+                    <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                      <div className="w-full border-t border-clan-border" />
+                    </div>
+                    <div className="relative flex justify-center">
+                      <span className="bg-clan-card px-2 text-xs text-clan-muted">or use your COC tag</span>
+                    </div>
+                  </div>
+
+                  {(mode === 'coc-signup' || mode === 'coc-signin') ? (
+                    <form onSubmit={handleCocSubmit} className="space-y-3">
+                      {mode === 'coc-signup' && (
+                        <div className="text-xs text-clan-accent bg-clan-accent/10 border border-clan-accent/30 rounded-lg p-2">
+                          Sign up using your in-game COC tag. You'll need to paste the API
+                          token from <strong>Settings → More Settings → API Token</strong> —
+                          it expires in 15 minutes, so have it ready.
+                        </div>
+                      )}
+                      {mode === 'coc-signup' && (
+                        <div className="relative">
+                          <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clan-muted" />
+                          <input
+                            type="text"
+                            value={displayName}
+                            onChange={(e) => setDisplayName(e.target.value)}
+                            placeholder="Display name (optional)"
+                            className="input pl-9"
+                            maxLength={32}
+                          />
+                        </div>
+                      )}
+                      <div className="relative">
+                        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clan-muted" />
+                        <input
+                          type="text"
+                          required
+                          value={cocTag}
+                          onChange={(e) => setCocTag(e.target.value)}
+                          placeholder="#P8L8Y0QJ"
+                          className="input pl-9"
+                          autoCapitalize="characters"
+                          autoCorrect="off"
+                          spellCheck={false}
+                        />
+                      </div>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clan-muted" />
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          required
+                          minLength={6}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="input pl-9 pr-10"
+                          autoComplete={mode === 'coc-signin' ? 'current-password' : 'new-password'}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-clan-muted hover:text-clan-text"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      {mode === 'coc-signup' && (
+                        <div className="relative">
+                          <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clan-muted" />
+                          <input
+                            type={showApiToken ? 'text' : 'password'}
+                            required
+                            value={cocApiToken}
+                            onChange={(e) => setCocApiToken(e.target.value)}
+                            placeholder="In-game API token"
+                            className="input pl-9 pr-10"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowApiToken(!showApiToken)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-clan-muted hover:text-clan-text"
+                            tabIndex={-1}
+                          >
+                            {showApiToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      )}
+
+                      {error && (
+                        <div className="text-xs text-red-300 bg-red-900/20 border border-red-700/50 rounded-lg p-2">
+                          {error}
+                        </div>
+                      )}
+
+                      <button type="submit" disabled={submitting} className="btn-primary w-full">
+                        {submitting ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : mode === 'coc-signup' ? (
+                          'Verify & Create Account'
+                        ) : (
+                          'Sign In with Tag'
+                        )}
+                      </button>
+
+                      <div className="flex gap-1 p-1 bg-clan-surface rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => { setMode('coc-signin'); setError(null) }}
+                          className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
+                            mode === 'coc-signin' ? 'bg-clan-accent text-clan-darker' : 'text-clan-muted'
+                          }`}
+                        >
+                          Tag Sign In
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setMode('coc-signup'); setError(null) }}
+                          className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${
+                            mode === 'coc-signup' ? 'bg-clan-accent text-clan-darker' : 'text-clan-muted'
+                          }`}
+                        >
+                          Tag Sign Up
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => { setMode('signin'); setError(null); setInfo(null) }}
+                        className="text-xs text-clan-muted hover:text-clan-text w-full text-center"
+                      >
+                        ← Back to email sign in
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setMode('coc-signin'); setError(null) }}
+                      className="btn-secondary w-full inline-flex items-center justify-center gap-2"
+                    >
+                      <Hash className="w-4 h-4" />
+                      Sign in with COC Tag
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* ── Continue as Guest ─────────────────────── */}
+              <div className="relative pt-2">
+                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                  <div className="w-full border-t border-clan-border" />
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="bg-clan-card px-2 text-xs text-clan-muted">or</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { signInAsGuest(); navigate('/') }}
+                className="btn-secondary w-full inline-flex items-center justify-center gap-2"
+              >
+                <User className="w-4 h-4" />
+                Continue as Guest
+              </button>
+              <p className="text-xs text-clan-muted text-center">
+                Guests can browse channels but can't DM, copy bases, or view CWL & strategies.
+              </p>
             </>
           )}
         </div>

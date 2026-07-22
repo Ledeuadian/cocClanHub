@@ -19,6 +19,7 @@ import { setupSocketServer } from './sockets/index.js'
 import cocRoutes from './routes/coc.js'
 import apiRoutes from './routes/api.js'
 import adminRoutes from './routes/admin.js'
+import cocAuthRoutes from './routes/cocAuth.js'
 
 // ── App init ─────────────────────────────────────────────────
 const app = express()
@@ -75,6 +76,7 @@ app.get('/', (_req, res) => {
 // ── Routes ───────────────────────────────────────────────────
 app.use('/api', apiRoutes)
 app.use('/api/coc', cocRoutes)
+app.use('/api/coc-auth', cocAuthRoutes)
 app.use('/api/admin', adminRoutes)
 
 // ── 404 handler ──────────────────────────────────────────────
