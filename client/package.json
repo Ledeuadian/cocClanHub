@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run icons && vite build",
+    "icons": "node scripts/generate-icons-from-archer.mjs",
     "_build_mobile_note": "On Windows: `$env:CAPACITOR='true'; npm run build`. On Mac/Linux: `CAPACITOR=true npm run build`.",
     "preview": "vite preview"
   },

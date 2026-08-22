@@ -75,7 +75,7 @@ export default function Dashboard() {
 
         {/* ── Hero / clan header (full viewport) ────────────────── */}
         <header
-          className="relative px-4 pt-8 pb-10 overflow-hidden flex flex-col justify-center"
+          className="relative px-4 pt-20 pb-10 overflow-hidden flex flex-col justify-start"
           style={{
             minHeight: '100vh',
             height: '100vh',

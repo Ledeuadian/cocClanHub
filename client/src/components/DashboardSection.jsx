@@ -59,6 +59,26 @@ export default function DashboardSection({
     const charEl   = charRef.current
     const titleEl  = titleRef.current
 
+    // ── Safety net: if GSAP / ScrollTrigger fails for any reason,
+    //     or if the page mounts already scrolled past the trigger,
+    //     the elements below would otherwise stay at `autoAlpha: 0`
+    //     forever because every tween uses `once: true`. Force-show
+    //     them on mount; ScrollTrigger will animate from the same
+    //     visual offset if it does fire. ────────────────────────────
+    const fallbackShow = (els) => {
+      if (!els) return
+      const list = Array.isArray(els) ? els : [els]
+      list.forEach((el) => {
+        if (!el) return
+        el.style.opacity = '1'
+        el.style.visibility = 'visible'
+      })
+    }
+    const safetyTimer = window.setTimeout(() => {
+      fallbackShow([titleEl, charEl, card])
+      card?.querySelectorAll('[data-stat-chip]').forEach((c) => fallbackShow([c]))
+    }, 1500)
+
     const ctx = gsap.context(() => {
       // ── PIN the section in place while it reveals ────────────────
       // End after 80% of one viewport of scroll, so the user advances
@@ -76,90 +96,97 @@ export default function DashboardSection({
         anticipatePin: 1,
       })
 
+      // Use `gsap.from(...)` (not `fromTo`) so the resting state of
+      // each element is its natural, visible CSS. `from` animates from
+      // the offset back to the current state; if GSAP never fires the
+      // tween, the element is still visible. We still set `immediateRender:
+      // false` so the offset doesn't flash on first paint.
+
       // ── Title slides in from top ─────────────────────────────────
       if (titleEl) {
-        gsap.fromTo(
-          titleEl,
-          { autoAlpha: 0, y: -40 },
-          {
-            autoAlpha: 1,
-            y: 0,
-            duration: 0.7,
-            ease: 'power3.out',
-            scrollTrigger: {
-              trigger: section,
-              start: 'top 70%',
-              once: true,
-            },
-          }
-        )
+        gsap.from(titleEl, {
+          autoAlpha: 0,
+          y: -40,
+          duration: 0.7,
+          ease: 'power3.out',
+          immediateRender: false,
+          scrollTrigger: {
+            trigger: section,
+            start: 'top 70%',
+            once: true,
+          },
+        })
       }
 
       // ── Character: scale + float in ──────────────────────────────
       if (charEl) {
-        gsap.fromTo(
-          charEl,
-          { autoAlpha: 0, scale: 0.6, y: 60, rotate: charOnLeft ? -8 : 8 },
-          {
-            autoAlpha: 1,
-            scale: 1,
-            y: 0,
-            rotate: 0,
-            duration: 1,
-            ease: 'back.out(1.5)',
-            scrollTrigger: {
-              trigger: section,
-              start: 'top 65%',
-              once: true,
-            },
-          }
-        )
+        gsap.from(charEl, {
+          autoAlpha: 0,
+          scale: 0.6,
+          y: 60,
+          rotate: charOnLeft ? -8 : 8,
+          duration: 1,
+          ease: 'back.out(1.5)',
+          immediateRender: false,
+          scrollTrigger: {
+            trigger: section,
+            start: 'top 65%',
+            once: true,
+          },
+        })
       }
 
       // ── Card slides in from the opposite side ────────────────────
       if (card) {
-        gsap.fromTo(
-          card,
-          { autoAlpha: 0, x: charOnLeft ? 80 : -80, y: 20 },
-          {
-            autoAlpha: 1,
-            x: 0,
-            y: 0,
-            duration: 0.85,
-            ease: 'power3.out',
-            scrollTrigger: {
-              trigger: section,
-              start: 'top 60%',
-              once: true,
-            },
-          }
-        )
+        gsap.from(card, {
+          autoAlpha: 0,
+          x: charOnLeft ? 80 : -80,
+          y: 20,
+          duration: 0.85,
+          ease: 'power3.out',
+          immediateRender: false,
+          scrollTrigger: {
+            trigger: section,
+            start: 'top 60%',
+            once: true,
+          },
+        })
       }
 
       // ── Stat chips stagger in ────────────────────────────────────
       const chips = card?.querySelectorAll('[data-stat-chip]')
       if (chips && chips.length) {
-        gsap.fromTo(
-          chips,
-          { autoAlpha: 0, y: 24, scale: 0.9 },
-          {
-            autoAlpha: 1,
-            y: 0,
-            scale: 1,
-            duration: 0.45,
-            stagger: 0.08,
-            ease: 'power2.out',
-            scrollTrigger: {
-              trigger: section,
-              start: 'top 55%',
-              once: true,
-            },
-          }
-        )
+        gsap.from(chips, {
+          autoAlpha: 0,
+          y: 24,
+          scale: 0.9,
+          duration: 0.45,
+          stagger: 0.08,
+          ease: 'power2.out',
+          immediateRender: false,
+          scrollTrigger: {
+            trigger: section,
+            start: 'top 55%',
+            once: true,
+          },
+        })
       }
+
+      // ── Refresh once after layout settles ─────────────────────────
+      // On first paint the hero intro overlay (fixed inset-0) is in the
+      // DOM but doesn't take up flow space. ScrollTrigger measures the
+      // page before the intro dismisses, so trigger positions are wrong
+      // by ~one viewport. Refresh after the intro would normally finish,
+      // and again after the first scroll, so pins/animations align.
+      ScrollTrigger.refresh()
     }, section)
 
+    const onFirstScroll = () => ScrollTrigger.refresh()
+    window.addEventListener('scroll', onFirstScroll, { once: true, passive: true })
+
     return () => {
+      window.clearTimeout(safetyTimer)
+      window.removeEventListener('scroll', onFirstScroll)
       ctx.revert()
       ScrollTrigger.refresh()
     }

@@ -20,6 +20,7 @@ import cocRoutes from './routes/coc.js'
 import apiRoutes from './routes/api.js'
 import adminRoutes from './routes/admin.js'
 import cocAuthRoutes from './routes/cocAuth.js'
+import pushRoutes from './routes/push.js'
 
 // ── App init ─────────────────────────────────────────────────
 const app = express()
@@ -78,6 +79,7 @@ app.use('/api', apiRoutes)
 app.use('/api/coc', cocRoutes)
 app.use('/api/coc-auth', cocAuthRoutes)
 app.use('/api/admin', adminRoutes)
+app.use('/api/push', pushRoutes)
 
 // ── 404 handler ──────────────────────────────────────────────
 app.use((req, res) => {
@@ -114,6 +116,7 @@ httpServer.listen(config.port, '0.0.0.0', () => {
     '║   Env:  ' + config.nodeEnv.padEnd(38) + '║',
     '║   Supabase: ' + (config.isSupabaseConfigured() ? 'connected' : 'not configured').padEnd(34) + '║',
     '║   COC API:   ' + (config.isCocConfigured() ? 'configured' : 'not configured').padEnd(34) + '║',
+    '║   Push:      ' + (config.isPushConfigured() ? 'configured' : 'not configured').padEnd(34) + '║',
     '╚═══════════════════════════════════════════════╝',
     '',
     '📱 Access from your phone (same WiFi):',

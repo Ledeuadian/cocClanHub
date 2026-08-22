@@ -1,8 +1,15 @@
 import { useTheme } from '../context/ThemeContext.jsx'
-import { Bell, Moon, Sun, Globe, Shield, Database } from 'lucide-react'
+import { useAuth } from '../context/AuthContext.jsx'
+import { usePushNotifications } from '../hooks/usePushNotifications.js'
+import {
+  Bell, Moon, Sun, Globe, Shield, Database,
+  Check, X, AlertCircle, Loader2, Smartphone
+} from 'lucide-react'
 
 export default function Settings() {
   const { theme, toggle } = useTheme()
+  const { signOut, isGuest } = useAuth()
+  const push = usePushNotifications()
 
   return (
     <div className="page-container space-y-6">
@@ -31,6 +38,16 @@ export default function Settings() {
           <Bell className="w-5 h-5" />
           Notifications
         </h2>
+
+        {/* Push notification status panel — hidden for guests */}
+        {!isGuest && <PushNotificationPanel push={push} />}
+
+        {isGuest && (
+          <div className="rounded-lg bg-clan-surface border border-clan-border p-3 text-xs text-clan-muted">
+            Sign in to enable push notifications for new messages.
+          </div>
+        )}
+
         {['War start/end alerts', 'Attack reminders', 'Donation requests', 'New announcements'].map((label, i) => (
           <div key={i} className="flex items-center justify-between">
             <div>
@@ -68,8 +85,99 @@ export default function Settings() {
       {/* Danger zone */}
       <div className="card border-clan-danger/30 space-y-3">
         <h2 className="section-title text-clan-danger">Danger Zone</h2>
-        <button className="btn-danger w-full">Sign Out</button>
+        <button onClick={signOut} className="btn-danger w-full">Sign Out</button>
       </div>
+    </div>
+  )
+}
+
+// ── Push notification status + control panel ────────────────
+
+function PushNotificationPanel({ push }) {
+  const { supported, permission, enabled, enable, disable, loading } = push
+
+  // Unsupported: browser too old, or no Notification API
+  if (!supported) {
+    return (
+      <div className="rounded-lg bg-clan-surface border border-clan-border p-3 flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-clan-muted shrink-0 mt-0.5" />
+        <div className="text-xs text-clan-muted">
+          <p className="font-semibold text-clan-text mb-0.5">Push not available</p>
+          <p>
+            Your browser doesn't support push notifications.
+            Try Chrome, Firefox, Edge, or install the app to your home screen.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Permission denied — user must enable in browser settings
+  if (permission === 'denied') {
+    return (
+      <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-3 flex items-start gap-3">
+        <X className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+        <div className="text-xs flex-1">
+          <p className="font-semibold text-red-300 mb-0.5">Notifications blocked</p>
+          <p className="text-clan-muted">
+            You've blocked notifications for this site. To enable them,
+            click the lock icon in the address bar and turn notifications back on.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Currently subscribed — show "Disable" option
+  if (enabled && permission === 'granted') {
+    return (
+      <div className="rounded-lg bg-green-500/10 border border-green-500/30 p-3">
+        <div className="flex items-start gap-3 mb-3">
+          <div className="w-9 h-9 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
+            <Check className="w-5 h-5 text-green-400" />
+          </div>
+          <div className="text-xs flex-1">
+            <p className="font-semibold text-green-300 mb-0.5">Push notifications enabled</p>
+            <p className="text-clan-muted">
+              You'll receive system notifications for new messages, even when the app is closed.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={disable}
+          disabled={loading}
+          className="btn-secondary w-full text-xs !py-1.5"
+        >
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bell className="w-3 h-3" />}
+          Disable notifications
+        </button>
+      </div>
+    )
+  }
+
+  // Permission not yet requested — show "Enable" button
+  return (
+    <div className="rounded-lg bg-clan-surface border border-clan-border p-3">
+      <div className="flex items-start gap-3 mb-3">
+        <div className="w-9 h-9 rounded-full bg-clan-accent/20 flex items-center justify-center shrink-0">
+          <Smartphone className="w-5 h-5 text-clan-accent" />
+        </div>
+        <div className="text-xs flex-1">
+          <p className="font-semibold text-clan-text mb-0.5">Get notified about new messages</p>
+          <p className="text-clan-muted">
+            Show system notifications when you receive a direct message or
+            @mention, even when you're using other apps.
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={enable}
+        disabled={loading}
+        className="btn-primary w-full text-xs !py-1.5"
+      >
+        {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bell className="w-3 h-3" />}
+        Enable push notifications
+      </button>
     </div>
   )
 }

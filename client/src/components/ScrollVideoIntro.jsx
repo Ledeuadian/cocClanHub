@@ -49,6 +49,7 @@ function shouldShowIntro() {
 
 export default function ScrollVideoIntro() {
   const videoRef      = useRef(null)
+  const readyRef      = useRef(false)
   const [active, setActive]      = useState(false)
   const [ready, setReady]        = useState(false)
   const [muted, setMuted]        = useState(true) // start muted, user can opt in
@@ -102,6 +103,15 @@ export default function ScrollVideoIntro() {
     let retried = false
     let retryTimer = null
 
+    // Hard fallback: if the video can't play within 4s (codec missing,
+    // autoplay blocked, network failure, etc.) dismiss the intro so the
+    // dashboard underneath is reachable. Otherwise users see a black
+    // fixed overlay with no obvious way out.
+    const HARD_TIMEOUT_MS = 4000
+    const hardTimeout = setTimeout(() => {
+      if (!readyRef.current) finish()
+    }, HARD_TIMEOUT_MS)
+
     const tryPlay = async () => {
       try {
         // Always start muted — most reliable across iOS/Android WebView.
@@ -122,6 +132,7 @@ export default function ScrollVideoIntro() {
     tryPlay()
 
     return () => {
+      clearTimeout(hardTimeout)
       if (retryTimer) clearTimeout(retryTimer)
     }
   }, [active])
@@ -135,6 +146,19 @@ export default function ScrollVideoIntro() {
   const onVideoEnded = () => {
     setShowHint(false)
     finish()
+  }
+
+  // If the video itself errors (broken file, unsupported codec) the
+  // onCanPlay never fires and `ready` stays false — dismiss immediately
+  // so the dashboard shows.
+  const onVideoError = () => {
+    setShowHint(false)
+    finish()
+  }
+
+  const onCanPlay = () => {
+    readyRef.current = true
+    setReady(true)
   }
 
   // ── Mute / unmute toggle ──────────────────────────────────────────
@@ -176,8 +200,9 @@ export default function ScrollVideoIntro() {
         playsInline
         preload="auto"
         muted
-        onCanPlay={() => setReady(true)}
+        onCanPlay={onCanPlay}
         onEnded={onVideoEnded}
+        onError={onVideoError}
         style={{
           display: 'block',
           width: '100%',

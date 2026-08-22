@@ -22,6 +22,12 @@ export default defineConfig({
         type: 'module',
         navigateFallback: 'index.html'
       },
+      // Use injectManifest so we can add custom service worker logic
+      // (push event handlers, notification click) that Workbox's
+      // generateSW can't produce.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw-push-handler.js',
       includeAssets: [
         'icons/favicon.ico',
         'icons/favicon-16x16.png',

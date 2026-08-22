@@ -18,6 +18,7 @@
 
 import { Server } from 'socket.io'
 import { getSupabaseAdmin } from '../config/supabase.js'
+import { sendPushToUser, buildChatPushPayload } from '../services/pushService.js'
 
 // Track which users are in which channels
 const userChannels = new Map()    // socketId -> Set<channelId>
@@ -330,9 +331,26 @@ export function setupSocketServer(httpServer, corsOrigin) {
         }
 
         // Deliver to the recipient's sockets
-        deliverToTag(recipient, 'dm:new', payload)
+        const deliveredSockets = deliverToTag(recipient, 'dm:new', payload)
         // Echo to sender's other sockets (so their other tabs/devices update)
         deliverToTag(sender, 'dm:new', payload)
+
+        // If no recipient sockets were connected, fire a push notification
+        // so the message still reaches them via the system notification tray.
+        if (deliveredSockets === 0) {
+          const pushPayload = buildChatPushPayload({
+            kind: 'dm',
+            senderName: name,
+            text: cleanText,
+            senderTag: sender,
+            recipientTag: recipient,
+            url: `/chat?dm=${sender}`
+          })
+          // Fire and forget — don't block the socket ack.
+          sendPushToUser({ cocTag: recipient }, pushPayload)
+            .then((r) => console.log(`[push] DM push delivered: ${r.sent}/${r.total}`))
+            .catch((e) => console.warn('[push] DM push failed', e?.message))
+        }
 
         if (typeof ack === 'function') ack({ ok: true, id: payload.id, created_at: payload.created_at })
       } catch (e) {

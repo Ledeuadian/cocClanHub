@@ -66,6 +66,19 @@ export function ChatProvider({ children }) {
     role: profile?.platform_role || 'member'
   }
 
+  // ── Refs for always-fresh message handlers ───────────────────────
+  // The subscription effect (section 3) runs only ONCE at mount, so it
+  // captures the initial closures of handleIncomingDM /
+  // handleIncomingChannelMessage. At mount time `me.tag` is '' and
+  // `me.id` is 'me' (profile hasn't loaded yet). The stale closure
+  // causes the self-echo dedup check to be skipped, so the sender
+  // processes their own DM as if they were the recipient (duplicate
+  // chat box + notification). These refs are updated every render and
+  // the subscription calls through them, ensuring the latest handler
+  // — with the correct me.tag / me.id — is always invoked.
+  const dmHandlerRef = useRef(null)
+  const channelHandlerRef = useRef(null)
+
   // Tracks which inbound message IDs we've already processed so the same
   // row echoed by both Supabase and Socket.IO doesn't get rendered twice.
   const seenIdsRef = useRef(new Set())
@@ -135,9 +148,12 @@ export function ChatProvider({ children }) {
       socketService.connectSocket()
     } catch { /* ignore */ }
 
+    // Call through refs so we always invoke the LATEST handler
+    // (with the correct me.tag / me.id), not the stale closure from
+    // mount time when profile hadn't loaded yet.
     const off = socketService.subscribeToSupabaseChat({
-      onChannelMessage: handleIncomingChannelMessage,
-      onDM: handleIncomingDM
+      onChannelMessage: (msg) => channelHandlerRef.current?.(msg),
+      onDM: (msg) => dmHandlerRef.current?.(msg)
     })
 
     // Subscribe to presence too (if a handler is set)
@@ -275,6 +291,18 @@ export function ChatProvider({ children }) {
     // Skip our own sends (compare canonical tag forms)
     if (msg.senderTag && me.tag && normalizeTag(msg.senderTag) === normalizeTag(me.tag)) return
 
+    // Belt-and-suspenders: if we are the RECIPIENT of this DM, we
+    // still need to show it. But if we are the SENDER and somehow
+    // the tag check above failed (e.g. tag still loading), also
+    // check recipientTag — if we're the recipient AND not the sender,
+    // it's legitimately ours to receive. If we're neither recipient
+    // nor sender (shouldn't happen but Realtime is broadcast), skip.
+    if (me.tag && msg.recipientTag && normalizeTag(msg.recipientTag) !== normalizeTag(me.tag)) {
+      // We are not the intended recipient — this is a broadcast echo
+      // (e.g. our own send echoing back). Skip it.
+      return
+    }
+
     // Add the sender to the chat members list if they aren't there yet
     const senderTag = msg.senderTag ? `#${normalizeTag(msg.senderTag)}` : ''
     if (senderTag) {
@@ -295,6 +323,13 @@ export function ChatProvider({ children }) {
 
     receiveDM(senderTag, msg.text, { id: msg.id })
   }, [me.tag])
+
+  // Keep refs in sync with the latest handlers every render.
+  // The subscription effect (section 3) runs only once at mount,
+  // but it calls through these refs so it always gets the fresh
+  // closure with the correct me.tag / me.id.
+  dmHandlerRef.current = handleIncomingDM
+  channelHandlerRef.current = handleIncomingChannelMessage
 
   // ── 6. Outbound: send channel message ──────────────────────────
   const sendChannelMessage = useCallback(async (channelId, text) => {
@@ -324,8 +359,29 @@ export function ChatProvider({ children }) {
       text,
       { userId: me.id, displayName: me.name }
     )
-    const canonicalId = ack?.ok ? ack.id : null
-    const created_at = ack?.ok ? ack.created_at : null
+    let canonicalId = ack?.ok ? ack.id : null
+    let created_at = ack?.ok ? ack.created_at : null
+
+    // ── Fallback: persist directly to Supabase if the socket didn't save it ──
+    // This ensures messages survive a refresh even when Socket.IO is down
+    // (auth rejection, backend unreachable, etc.). Without this, messages
+    // live only in React state and vanish on page reload.
+    if (!canonicalId) {
+      try {
+        const row = await socketService.persistChannelMessage({
+          channelId,
+          text,
+          userId: me.id
+        })
+        if (row) {
+          canonicalId = row.id
+          created_at = row.created_at
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[chat] channel message persist fallback failed', e)
+      }
+    }
 
     if (canonicalId) {
       markSeen(canonicalId)
@@ -387,8 +443,30 @@ export function ChatProvider({ children }) {
         })
       : null
 
-    const canonicalId = ack?.ok ? ack.id : null
-    const created_at = ack?.ok ? ack.created_at : null
+    let canonicalId = ack?.ok ? ack.id : null
+    let created_at = ack?.ok ? ack.created_at : null
+
+    // ── Fallback: persist directly to Supabase if the socket didn't save it ──
+    // Same rationale as sendChannelMessage — ensures DMs survive refresh
+    // even when Socket.IO is unavailable.
+    if (!canonicalId && myTag) {
+      try {
+        const row = await socketService.persistDM({
+          senderTag: myTag,
+          recipientTag,
+          senderName: me.name,
+          text
+        })
+        if (row) {
+          canonicalId = row.id
+          created_at = row.created_at
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[chat] DM persist fallback failed', e)
+      }
+    }
+
     if (canonicalId) {
       markSeen(canonicalId)
       setMessages((prev) => ({

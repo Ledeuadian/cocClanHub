@@ -4,6 +4,7 @@ import Sidebar from './Sidebar.jsx'
 import MobileNav from './MobileNav.jsx'
 import Topbar from './Topbar.jsx'
 import InstallBanner from '../InstallBanner.jsx'
+import FloatingChatLauncher from '../FloatingChatLauncher.jsx'
 import GsapScrollScene from '../GsapScrollScene.jsx'
 import { MobileNavProvider, useMobileNav } from '../../context/MobileNavContext.jsx'
 
@@ -50,6 +51,7 @@ function LayoutInner() {
         <MobileNav />
       </div>
       <InstallBanner />
+      <FloatingChatLauncher />
     </div>
   )
 }
