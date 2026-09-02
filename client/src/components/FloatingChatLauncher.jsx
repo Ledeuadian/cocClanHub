@@ -521,6 +521,7 @@ function PopoverConversation({ view, onBack }) {
     getDMMessages,
     sendChannelMessage,
     sendDM,
+    refreshDMs,
   } = useChat()
 
   const [input, setInput] = useState('')
@@ -530,6 +531,12 @@ function PopoverConversation({ view, onBack }) {
     if (view.kind === 'channel') return getChannelMessages(view.id)
     return getDMMessages(view.id)
   }, [view, getChannelMessages, getDMMessages])
+
+  // Re-fetch chat history from the DB when a conversation is opened — in
+  // case realtime/polling missed anything while the panel was closed.
+  useEffect(() => {
+    refreshDMs()
+  }, [view, refreshDMs])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -541,6 +548,9 @@ function PopoverConversation({ view, onBack }) {
     if (view.kind === 'channel') sendChannelMessage(view.id, input)
     else sendDM(view.id, input)
     setInput('')
+    // Belt-and-suspenders: also re-fetch from DB so the canonical row lands
+    // in state even if the optimistic + ack path somehow diverged.
+    refreshDMs()
   }
 
   const otherUser = view.kind === 'dm' ? members.find(m => m.id === view.id) : null
@@ -583,7 +593,9 @@ function PopoverConversation({ view, onBack }) {
           </div>
         ) : (
           conversation.map((msg, i) => {
-            const isMe = msg.authorId === me.id || msg.fromId === me.id
+            // DM rows use COC tags in fromId; channel rows use authorId (auth uuid)
+            const nt = (t) => (t || '').replace(/^#/, '').toUpperCase()
+            const isMe = msg.authorId === me.id || (msg.fromId && me.tag && nt(msg.fromId) === nt(me.tag)) || msg.fromId === me.id
             const prev = conversation[i - 1]
             const showAvatar = !isMe && (!prev || prev.author !== msg.author)
 

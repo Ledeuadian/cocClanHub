@@ -47,12 +47,13 @@ function unregisterTag(socket) {
   if (set.size === 0) tagToSockets.delete(t)
 }
 
-function deliverToTag(tag, event, payload) {
+function deliverToTag(tag, event, payload, exceptSocketId) {
   const t = normalizeTag(tag)
   const sockets = tagToSockets.get(t)
   if (!sockets || sockets.size === 0) return 0
   let n = 0
   for (const sid of sockets) {
+    if (exceptSocketId && sid === exceptSocketId) continue // skip the emitting socket
     const s = io.sockets.sockets.get(sid)
     if (s) { s.emit(event, payload); n++ }
   }
@@ -61,6 +62,17 @@ function deliverToTag(tag, event, payload) {
 
 // io is initialized later — hoist for the helper above.
 let io
+
+/**
+ * Which COC tags currently have at least one connected socket?
+ * Used by the HTTP presence endpoint as a polling fallback for
+ * clients whose socket connection drops (mobile WebViews, etc.).
+ */
+export function getOnlineTags() {
+  return Array.from(tagToSockets.entries())
+    .filter(([, sockets]) => sockets.size > 0)
+    .map(([tag]) => tag)
+}
 
 /**
  * Socket.IO auth middleware.
@@ -181,6 +193,37 @@ export function setupSocketServer(httpServer, corsOrigin) {
         displayName: socket.data.displayName
       })
     }
+
+    // ── Presence snapshot for the newly connected client ──
+    // `broadcast` only reaches clients that were ALREADY connected when
+    // someone came online. Without this snapshot, a client that connects
+    // later never learns who is online — everyone shows "Offline" forever.
+    // Send the newcomer the current list of online tags (excluding self).
+    socket.emit('presence:snapshot', {
+      type: 'snapshot',
+      online: Array.from(tagToSockets.entries())
+        .filter(([tag]) => tag !== socket.data.tag)
+        .map(([tag]) => ({
+          tag,
+          // Best-effort display name from any connected socket for that tag
+          displayName: io.sockets.sockets.get(
+            tagToSockets.get(tag)?.values().next().value
+          )?.data?.displayName || tag
+        }))
+    })
+
+    // ── Presence query (per-socket) ──
+    // Lets a client ask "is <tag> online right now?" at any time — a
+    // deterministic fallback for when broadcast events were missed
+    // (mobile WebView suspensions, reconnects, etc.).
+    socket.on('presence:query', ({ tags }, ack) => {
+      if (typeof ack !== 'function') return
+      const wanted = Array.isArray(tags) ? tags : []
+      const online = wanted
+        .map(normalizeTag)
+        .filter((t) => tagToSockets.has(t) && tagToSockets.get(t).size > 0)
+      ack({ online })
+    })
 
     socket.on('identity:set', ({ tag: _ignoredTag, displayName: _ignoredName }) => {
       // No-op: the verified tag + displayName from the auth middleware
@@ -325,6 +368,7 @@ export function setupSocketServer(httpServer, corsOrigin) {
           senderTag: sender,
           recipientTag: recipient,
           senderName: name,
+          senderUserId: socket.data.userId || null, // lets clients dedup their own sends reliably
           text: cleanText,
           created_at: row?.created_at || new Date().toISOString(),
           _source: 'socket'
@@ -332,8 +376,11 @@ export function setupSocketServer(httpServer, corsOrigin) {
 
         // Deliver to the recipient's sockets
         const deliveredSockets = deliverToTag(recipient, 'dm:new', payload)
-        // Echo to sender's other sockets (so their other tabs/devices update)
-        deliverToTag(sender, 'dm:new', payload)
+        // Echo to sender's OTHER sockets only (not the one that sent it —
+        // that client already has the optimistic local copy). Skipping the
+        // emitting socket prevents the sender from "receiving" their own
+        // message when their profile tag hasn't loaded yet on the client.
+        deliverToTag(sender, 'dm:new', payload, socket.id)
 
         // If no recipient sockets were connected, fire a push notification
         // so the message still reaches them via the system notification tray.

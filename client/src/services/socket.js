@@ -133,6 +133,18 @@ export function getSocket() {
     })
   })
 
+  // Initial snapshot of who is online — sent once right after connect.
+  // presence:update broadcasts only reach clients already connected,
+  // so without the snapshot a late-connecting client sees everyone offline.
+  socket.on('presence:snapshot', (payload) => {
+    const online = Array.isArray(payload?.online) ? payload.online : []
+    presenceSubs.forEach((fn) => {
+      for (const u of online) {
+        try { fn({ type: 'user-online', tag: u.tag, displayName: u.displayName }) } catch (e) { console.error('[socket] presenceSubs', e) }
+      }
+    })
+  })
+
   return socket
 }
 
@@ -308,16 +320,22 @@ export function subscribeToSupabaseChat({ onChannelMessage: onCh, onDM: onDirect
         { event: 'INSERT', schema: 'public', table: 'chat_messages' },
         (payload) => {
           const row = payload.new
-          const msg = {
-            channelId: row.channel_id,
-            text: row.text,
-            userId: row.author_id,
-            displayName: 'Member',
-            created_at: row.created_at,
-            _source: 'supabase'
-          }
-          channelSubs.forEach((fn) => {
-            try { fn(msg) } catch (e) { console.error('[supabase] chat', e) }
+          // Realtime doesn't expose joined columns, so resolve the sender's
+          // display name asynchronously. If we can't, fall back to the
+          // author_id; the client-side roster may resolve it later.
+          resolveAuthorName(row.author_id).then((displayName) => {
+            const msg = {
+              channelId: row.channel_id,
+              text: row.text,
+              userId: row.author_id,
+              displayName,
+              created_at: row.created_at,
+              id: row.id,
+              _source: 'supabase'
+            }
+            channelSubs.forEach((fn) => {
+              try { fn(msg) } catch (e) { console.error('[supabase] chat', e) }
+            })
           })
         }
       )
@@ -330,6 +348,7 @@ export function subscribeToSupabaseChat({ onChannelMessage: onCh, onDM: onDirect
             senderTag: row.sender_tag,
             recipientTag: row.recipient_tag,
             senderName: row.sender_name,
+            senderUserId: row.sender_user_id || null,
             text: row.text,
             created_at: row.created_at,
             id: row.id,
@@ -355,6 +374,29 @@ export function subscribeToSupabaseChat({ onChannelMessage: onCh, onDM: onDirect
 }
 
 // ── Supabase persistence helpers ─────────────────────────────────
+
+// Tiny per-author cache so we don't re-query the same profile on every
+// realtime event. Realtime doesn't expose joined columns.
+const _authorCache = new Map() // authorId → { name, ts }
+const AUTHOR_TTL_MS = 5 * 60 * 1000
+
+async function resolveAuthorName(authorId) {
+  if (!authorId) return 'Member'
+  const cached = _authorCache.get(authorId)
+  if (cached && Date.now() - cached.ts < AUTHOR_TTL_MS) return cached.name
+  try {
+    const { data } = await supabase
+      .from('profiles')
+      .select('display_name, coc_player_name')
+      .eq('id', authorId)
+      .maybeSingle()
+    const name = data?.display_name || data?.coc_player_name || 'Member'
+    _authorCache.set(authorId, { name, ts: Date.now() })
+    return name
+  } catch {
+    return 'Member'
+  }
+}
 
 /**
  * Persist a channel message to Supabase.
@@ -417,11 +459,28 @@ export async function loadChannelMessages(channelId, limit = 50) {
   if (!isSupabaseConfigured()) return []
   const { data, error } = await supabase
     .from('chat_messages')
-    .select('*')
+    // Join the author's profile so we can show WHO sent each message.
+    .select('*, author:profiles(display_name, coc_player_name)')
     .eq('channel_id', channelId)
     .order('created_at', { ascending: true })
     .limit(limit)
   if (error) { console.warn('[supabase] loadChannelMessages', error); return [] }
+  return data || []
+}
+
+/**
+ * Load all recent DMs involving myTag (either direction), newest first.
+ * Used to (re)build the DM thread list without needing the clan roster.
+ */
+export async function loadMyDMs(myTag, limit = 100) {
+  if (!isSupabaseConfigured()) return []
+  const { data, error } = await supabase
+    .from('direct_messages')
+    .select('*')
+    .or(`sender_tag.eq.${myTag},recipient_tag.eq.${myTag}`)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) { console.warn('[supabase] loadMyDMs', error); return [] }
   return data || []
 }
 
@@ -446,5 +505,6 @@ export default {
   persistChannelMessage,
   persistDM,
   loadDMs,
+  loadMyDMs,
   loadChannelMessages
 }

@@ -14,7 +14,7 @@ import { cn } from '../lib/utils.js'
 // ── Single conversation view (reused for channels + DMs) ──────
 
 function ConversationView({ kind, id, title, subtitle, onBack }) {
-  const { me, getChannelMessages, getDMMessages, sendChannelMessage, sendDM, members } = useChat()
+  const { me, getChannelMessages, getDMMessages, sendChannelMessage, sendDM, members, refreshDMs } = useChat()
   const { hide: hideMobileNav, show: showMobileNav } = useMobileNav()
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
@@ -29,6 +29,12 @@ function ConversationView({ kind, id, title, subtitle, onBack }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [conversation])
 
+  // Refresh chat when this conversation mounts so the chat box reflects the
+  // canonical DB state, in case realtime/polling missed anything.
+  useEffect(() => {
+    refreshDMs()
+  }, [kind, refreshDMs])
+
   // Auto-hide the bottom nav when the chat input is focused (on mobile).
   // Restores the nav when focus is lost.
   const handleInputFocus = () => hideMobileNav()
@@ -40,6 +46,7 @@ function ConversationView({ kind, id, title, subtitle, onBack }) {
     if (kind === 'channel') sendChannelMessage(id, input)
     else sendDM(id, input)
     setInput('')
+    refreshDMs()
   }
 
   const otherUser = kind === 'dm' ? members.find(m => m.id === id) : null
@@ -97,7 +104,9 @@ function ConversationView({ kind, id, title, subtitle, onBack }) {
         ) : (
           <>
             {conversation.map((msg, i) => {
-              const isMe = msg.authorId === me.id || msg.fromId === me.id
+              // DM rows use COC tags in fromId; channel rows use authorId (auth uuid)
+              const nt = (t) => (t || '').replace(/^#/, '').toUpperCase()
+              const isMe = msg.authorId === me.id || (msg.fromId && me.tag && nt(msg.fromId) === nt(me.tag)) || msg.fromId === me.id
               const prev = conversation[i - 1]
               const showAvatar = !isMe && (!prev || prev.author !== msg.author)
               const showHeader = !isMe && showAvatar
