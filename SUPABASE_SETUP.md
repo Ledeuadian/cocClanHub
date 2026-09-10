@@ -1,6 +1,6 @@
 # 🔐 Supabase Auth & Database Setup Guide
 
-This guide walks you through connecting your COC Clan Hub to Supabase for real authentication, persistent data, and **Clash of Clans account linking** (no Google/Discord — just your in-game player tag verified via the official Supercell API).
+This guide walks you through connecting your Clash of Clans Hub to Supabase for real authentication, persistent data, and **Clash of Clans account linking** (no Google/Discord — just your in-game player tag verified via the official Supercell API).
 
 ---
 

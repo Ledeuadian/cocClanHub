@@ -286,6 +286,43 @@ export function isConnected() {
   return connected
 }
 
+/**
+ * Re-establish BOTH live transports after a suspension (mobile WebView
+ * backgrounded, network drop, laptop sleep). Supabase Realtime channels
+ * and Socket.IO connections silently die when suspended and will NOT
+ * resubscribe on their own — this forces a clean re-subscribe so live
+ * messages flow again.
+ *
+ * Safe to call repeatedly. Call on app focus / visibilitychange.
+ *
+ * Awaits channel teardown so we don't race against the OLD subscription
+ * (the previous version removed + re-created synchronously and Supabase
+ * JS client sometimes never delivered events on the new channel — this
+ * is the cause of "DMs only appear after app restart").
+ */
+export async function resubscribeRealtime() {
+  // 1. Force Socket.IO reconnect (it may have given up or be half-dead).
+  try { connectSocket() } catch { /* ignore */ }
+
+  // 2. Tear down and rebuild the Supabase Realtime channel. The existing
+  //    subscriber callbacks (channelSubs/dmSubs) are NOT removed by
+  //    removeChannel, so re-wiring the channel keeps all listeners.
+  if (_supabaseChannel) {
+    try {
+      // Await the teardown so the old subscription is fully detached
+      // before we create a new one. Without this, the new channel may
+      // share the underlying WebSocket subscription and silently drop
+      // its event bindings.
+      await supabase.removeChannel(_supabaseChannel)
+    } catch { /* ignore */ }
+    _supabaseChannel = null
+  }
+  if (_subCount > 0) {
+    _supabaseChannel = buildRealtimeChannel()
+    _supabaseChannel.subscribe()
+  }
+}
+
 // ── Supabase Realtime bridge ─────────────────────────────────────
 //
 // Subscribes to INSERTs on chat_messages + direct_messages and
@@ -295,6 +332,63 @@ export function isConnected() {
 
 let _supabaseChannel = null
 let _subCount = 0
+
+/**
+ * Build (but don't subscribe) the realtime channel for chat tables.
+ * Split out so resubscribeRealtime() can rebuild it after a suspension.
+ */
+function buildRealtimeChannel() {
+  // Unique channel name per rebuild so Supabase JS treats each as a fresh
+  // subscription. Reusing 'public:chat_all' across tear-down + rebuild
+  // can leave the client stuck on the old (dead) socket subscription.
+  const chanName = `public:chat_all:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+  return supabase
+    .channel(chanName)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+      (payload) => {
+        const row = payload.new
+        // Realtime doesn't expose joined columns, so resolve the sender's
+        // display name asynchronously. If we can't, fall back to 'Member';
+        // the client-side roster may resolve it later.
+        resolveAuthorName(row.author_id).then((displayName) => {
+          const msg = {
+            channelId: row.channel_id,
+            text: row.text,
+            userId: row.author_id,
+            displayName,
+            created_at: row.created_at,
+            id: row.id,
+            _source: 'supabase'
+          }
+          channelSubs.forEach((fn) => {
+            try { fn(msg) } catch (e) { console.error('[supabase] chat', e) }
+          })
+        })
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'direct_messages' },
+      (payload) => {
+        const row = payload.new
+        const msg = {
+          senderTag: row.sender_tag,
+          recipientTag: row.recipient_tag,
+          senderName: row.sender_name,
+          senderUserId: row.sender_user_id || null,
+          text: row.text,
+          created_at: row.created_at,
+          id: row.id,
+          _source: 'supabase'
+        }
+        dmSubs.forEach((fn) => {
+          try { fn(msg) } catch (e) { console.error('[supabase] dm', e) }
+        })
+      }
+    )
+}
 
 /**
  * Start listening to Supabase Realtime for chat_messages + direct_messages.
@@ -313,53 +407,8 @@ export function subscribeToSupabaseChat({ onChannelMessage: onCh, onDM: onDirect
   _subCount += 1
 
   if (!_supabaseChannel) {
-    _supabaseChannel = supabase
-      .channel('public:chat_all')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'chat_messages' },
-        (payload) => {
-          const row = payload.new
-          // Realtime doesn't expose joined columns, so resolve the sender's
-          // display name asynchronously. If we can't, fall back to the
-          // author_id; the client-side roster may resolve it later.
-          resolveAuthorName(row.author_id).then((displayName) => {
-            const msg = {
-              channelId: row.channel_id,
-              text: row.text,
-              userId: row.author_id,
-              displayName,
-              created_at: row.created_at,
-              id: row.id,
-              _source: 'supabase'
-            }
-            channelSubs.forEach((fn) => {
-              try { fn(msg) } catch (e) { console.error('[supabase] chat', e) }
-            })
-          })
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'direct_messages' },
-        (payload) => {
-          const row = payload.new
-          const msg = {
-            senderTag: row.sender_tag,
-            recipientTag: row.recipient_tag,
-            senderName: row.sender_name,
-            senderUserId: row.sender_user_id || null,
-            text: row.text,
-            created_at: row.created_at,
-            id: row.id,
-            _source: 'supabase'
-          }
-          dmSubs.forEach((fn) => {
-            try { fn(msg) } catch (e) { console.error('[supabase] dm', e) }
-          })
-        }
-      )
-      .subscribe()
+    _supabaseChannel = buildRealtimeChannel()
+    _supabaseChannel.subscribe()
   }
 
   return () => {
@@ -490,6 +539,7 @@ export default {
   disconnectSocket,
   joinChannel,
   leaveChannel,
+  resubscribeRealtime,
   emitChannelMessage,
   emitChannelMessageWithAck,
   emitDM,

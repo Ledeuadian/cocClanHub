@@ -1,7 +1,7 @@
-# Open Windows Firewall ports for COC Clan Hub dev servers
+# Open Windows Firewall ports for Clash of Clans Hub dev servers
 # Run this ONCE in PowerShell as Administrator
 
-Write-Host "🔓 Opening Windows Firewall for COC Clan Hub..." -ForegroundColor Yellow
+Write-Host "🔓 Opening Windows Firewall for Clash of Clans Hub..." -ForegroundColor Yellow
 
 # Vite dev server (frontend)
 New-NetFirewallRule -DisplayName "COC Vite Dev Server" `

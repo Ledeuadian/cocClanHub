@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Network security config for COC Clan Hub.
+  Network security config for Clash of Clans Hub.
 
   - System CAs are trusted for normal HTTPS traffic (the default).
   - All app traffic uses HTTPS (cleartext stays disabled).

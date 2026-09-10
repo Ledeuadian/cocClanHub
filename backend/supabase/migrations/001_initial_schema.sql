@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
--- COC Clan Hub — Supabase Database Schema
+-- Clash of Clans Hub — Supabase Database Schema
 -- ═══════════════════════════════════════════════════════════════════
 -- Run this in the Supabase SQL Editor (Dashboard > SQL Editor)
 -- Or via: npx supabase db push (if using Supabase CLI)

@@ -1,5 +1,5 @@
 /**
- * Custom service worker for COC Clan Hub.
+ * Custom service worker for Clash of Clans Hub.
  *
  * Used by vite-plugin-pwa's injectManifest strategy. This file is
  * bundled (not generated) so we can add custom event listeners that

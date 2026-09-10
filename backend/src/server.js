@@ -1,5 +1,5 @@
 /**
- * COC Clan Hub — Backend Server
+ * Clash of Clans Hub — Backend Server
  * Express + Socket.IO + Supabase + COC API proxy
  */
 
@@ -66,7 +66,7 @@ app.use(defaultLimiter)
 // ── Health check ─────────────────────────────────────────────
 app.get('/', (_req, res) => {
   res.json({
-    name: 'COC Clan Hub API',
+    name: 'Clash of Clans Hub API',
     version: '0.1.0',
     supabase: config.isSupabaseConfigured() ? 'connected' : 'not configured',
     coc: config.isCocConfigured() ? 'configured' : 'not configured',
@@ -111,7 +111,7 @@ httpServer.listen(config.port, '0.0.0.0', () => {
   console.log([
     '',
     '╔═══════════════════════════════════════════════╗',
-    '║   🏰  COC Clan Hub API Server                 ║',
+    '║   🏰  Clash of Clans Hub API Server         ║',
     '║   Port: ' + String(config.port).padEnd(38) + '║',
     '║   Env:  ' + config.nodeEnv.padEnd(38) + '║',
     '║   Supabase: ' + (config.isSupabaseConfigured() ? 'connected' : 'not configured').padEnd(34) + '║',

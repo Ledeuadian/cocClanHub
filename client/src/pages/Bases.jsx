@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Plus, Home, Star, Search, X, Upload, Link as LinkIcon,
   Loader2, Image as ImageIcon, ExternalLink, Swords,
-  Wheat, Trophy, Layers, Trash2, Lock
+  Wheat, Trophy, Layers, Trash2, Lock, Maximize2
 } from 'lucide-react'
 import Badge from '../components/ui/Badge.jsx'
 import { supabase } from '../lib/supabase.js'
@@ -22,6 +22,7 @@ export default function Bases() {
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [lightbox, setLightbox] = useState(null) // { url, name } when open
   const [favorites, setFavorites] = useState(() => {
     try {
       const stored = localStorage.getItem('coc_base_favorites')
@@ -162,17 +163,33 @@ export default function Bases() {
                   <Home className="w-10 h-10 text-clan-muted/50" />
                 </div>
               )}
-              {base.link && !isGuest && (
-                <a
-                  href={base.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 rounded-md text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Open base link"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
+              {/* Hover overlay with action buttons */}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors pointer-events-none" />
+              <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                {base.image_url && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setLightbox({ url: base.image_url, name: base.name }) }}
+                    title="View full size"
+                    aria-label="View full size"
+                    className="p-1.5 bg-black/60 hover:bg-black/80 rounded-md text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {base.link && !isGuest && (
+                  <a
+                    href={base.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-1.5 bg-black/60 hover:bg-black/80 rounded-md text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Open base link"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </div>
             </div>
 
             <div className="flex items-start justify-between gap-2 mb-2">
@@ -264,6 +281,67 @@ export default function Bases() {
           }}
         />
       )}
+
+      {/* Full-size Image Lightbox */}
+      {lightbox && (
+        <ImageLightbox
+          url={lightbox.url}
+          name={lightbox.name}
+          onClose={() => setLightbox(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Image Lightbox — full-size preview of a base screenshot
+   Closes on backdrop click, X button, or Escape key
+   ────────────────────────────────────────────────────────────────── */
+function ImageLightbox({ url, name, onClose }) {
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    // Prevent background scrolling while open
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+    }
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${name} full size preview`}
+    >
+      {/* Close button */}
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-4 right-4 p-2 rounded-md bg-black/60 hover:bg-black/80 text-white transition-colors"
+        aria-label="Close preview"
+      >
+        <X className="w-5 h-5" />
+      </button>
+
+      {/* Caption */}
+      <p className="text-sm text-white/80 mb-3 font-medium">{name}</p>
+
+      {/* Full-size image */}
+      <img
+        src={url}
+        alt={name}
+        onClick={(e) => e.stopPropagation()}
+        className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl select-none cursor-zoom-in"
+      />
+
+      <p className="text-xs text-white/40 mt-3">Press Esc or click anywhere to close</p>
     </div>
   )
 }

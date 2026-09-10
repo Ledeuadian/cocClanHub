@@ -40,11 +40,16 @@ const ChatContext = createContext(null)
 const normalizeTag = (tag) => (tag || '').replace(/^#/, '').toUpperCase()
 
 // Default channels seeded when the `channels` table is empty.
+// NOTE: must mirror what's actually in the production `channels` table.
+// The DB currently contains: general, donation-requests, base-building,
+// off-topic, war-planning. Stale entries here caused the UI to show
+// channels that don't exist in the DB (no history, no live events).
 const DEFAULT_CHANNELS = [
-  { id: 'general',    name: 'general',    type: 'text', description: 'Clan-wide chatter' },
-  { id: 'leadership', name: 'leadership', type: 'text', description: 'Leaders and elders only' },
-  { id: 'wars',       name: 'wars',       type: 'text', description: 'War strategy + call-outs' },
-  { id: 'cwl',        name: 'cwl',        type: 'text', description: 'CWL coordination' }
+  { id: 'general',           name: 'general',          type: 'text', description: 'Clan-wide chatter' },
+  { id: 'donation-requests', name: 'donation-requests', type: 'text', description: 'Request troops/donations' },
+  { id: 'base-building',    name: 'base-building',    type: 'text', description: 'Base layout discussion' },
+  { id: 'off-topic',        name: 'off-topic',        type: 'text', description: 'Anything else' },
+  { id: 'war-planning',     name: 'war-planning',     type: 'text', description: 'War strategy + call-outs' }
 ]
 
 // ── Provider ────────────────────────────────────────────────────
@@ -273,15 +278,17 @@ export function ChatProvider({ children }) {
       const all = await socketService.loadMyDMs(myTag, 100)
       if (cancelled || !all?.length) return
 
-      // Merge new message rows into messages.dms (de-duped by row id).
+      // Merge new message rows into messages.dms.
       // loadMyDMs returns newest-first — sort oldest-first so the thread
       // renders chronologically (newest at the BOTTOM, like Messenger).
+      // Rows coming from the DB are CANONICAL: if a locally-constructed
+      // row with the same id already exists (e.g. a realtime row built
+      // before me.tag loaded, which stored toId:'me'), REPLACE it —
+      // otherwise the malformed row blocks the chatbox filter forever.
       setMessages((prev) => {
-        const known = new Set(prev.dms.map((m) => m.id))
-        const toAdd = all
-          .filter((r) => !known.has(r.id))
-          .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-          .map((r) => ({
+        const byId = new Map(prev.dms.map((m) => [m.id, m]))
+        for (const r of all) {
+          byId.set(r.id, {
             id: r.id,
             fromId: `#${r.sender_tag}`,
             toId: `#${r.recipient_tag}`,
@@ -289,9 +296,13 @@ export function ChatProvider({ children }) {
             text: r.text,
             time: formatTime(r.created_at),
             created_at: r.created_at
-          }))
-        if (toAdd.length === 0) return prev
-        return { ...prev, dms: [...prev.dms, ...toAdd] }
+          })
+        }
+        const merged = Array.from(byId.values())
+          .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+        if (merged.length === prev.dms.length &&
+            merged.every((m, i) => prev.dms[i] === m)) return prev
+        return { ...prev, dms: merged }
       })
 
       // 2. Rebuild the thread list from the most recent DM per partner.
@@ -396,6 +407,12 @@ export function ChatProvider({ children }) {
       if (document.visibilityState === 'visible') {
         setRefreshTick((n) => n + 1)
         pollPresence() // also refresh online indicators on wake
+        // Tear down + rebuild BOTH realtime transports — the WebSocket
+        // connections (Socket.IO + Supabase Realtime) silently die when
+        // backgrounded and do not resubscribe on their own. Without this,
+        // DMs and channel messages stop arriving live until the user
+        // restarts the app.
+        Promise.resolve(socketService.resubscribeRealtime()).catch(() => {})
       }
     }
     window.addEventListener('focus', onWake)
@@ -405,6 +422,18 @@ export function ChatProvider({ children }) {
       document.removeEventListener('visibilitychange', onWake)
     }
   }, [me.tag, pollPresence])
+
+  // ── 3h. Auto-join channels for Socket.IO broadcasts ──
+  // Socket.IO channel broadcasts only reach sockets that called
+  // channel:join — if the client never joined, the server's
+  // `io.to('channel:x').emit(...)` lands in a room nobody listens to.
+  // We join every known channel whenever the channels list changes.
+  useEffect(() => {
+    if (!channels?.length) return
+    for (const ch of channels) {
+      try { socketService.joinChannel(ch.id, { displayName: me.name }) } catch { /* ignore */ }
+    }
+  }, [channels, me.name])
 
   useEffect(() => {
     pollPresence()
@@ -665,7 +694,11 @@ export function ChatProvider({ children }) {
     const msg = {
       id: opts.id || `r-${Date.now()}-${Math.random()}`,
       fromId,
-      toId: me.tag || me.id, // prefer tag so it matches in getDMMessages
+      // Prefer the tag so it matches in getDMMessages. Never fall back to
+      // me.id here — rows stored with toId:'me' never match the tag-based
+      // chatbox filter, which is why new DMs updated the thread list but
+      // not the open conversation.
+      toId: me.tag || opts.toId || fromId,
       author: senderName,
       text: text.trim(),
       time: formatTime()
@@ -708,10 +741,21 @@ export function ChatProvider({ children }) {
     return messages.dms.filter((m) => {
       // Normalize both tag-based ids ("#ABCD" → "ABCD") and legacy
       // auth-uuid ids so optimistic + DB-loaded rows both match.
-      const from = (m.fromId || '').startsWith('#') ? normalizeTag(m.fromId) : m.fromId
-      const to   = (m.toId   || '').startsWith('#') ? normalizeTag(m.toId)   : m.toId
-      return (from === myTag && to === otherTag) ||
-             (from === otherTag && to === myTag)
+      const stripHash = (t) => (t || '').replace(/^#/, '').toUpperCase()
+      const from = stripHash(m.fromId)
+      const to   = stripHash(m.toId)
+      // Tag-based match (normal path).
+      const tagMatch =
+        (from && otherTag && from === otherTag) ||
+        (to   && otherTag && to   === otherTag)
+      if (tagMatch && myTag && (from === myTag || to === myTag)) return true
+      // Backwards-compat: rows stored before this fix may have toId:'me'
+      // (when me.tag was empty) or the bare auth uuid. Treat them as ours
+      // so the chatbox still shows them.
+      if (to === 'me' || to === stripHash(me.id)) {
+        return from === otherTag || to === otherTag
+      }
+      return false
     })
   }, [messages.dms, me.tag])
 

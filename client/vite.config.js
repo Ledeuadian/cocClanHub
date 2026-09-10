@@ -37,7 +37,7 @@ export default defineConfig({
         'icons/android-chrome-512x512.png'
       ],
       manifest: {
-        name: 'COC Clan Hub',
+        name: 'Clash of Clans Hub',
         short_name: 'ClanHub',
         description: 'Clash of Clans clan management, communication, and strategy hub',
         theme_color: '#1a1a2e',

@@ -226,101 +226,105 @@ export default function Login() {
           ) : (
             // ── SIGN IN / SIGN UP ─────────────────────────
             <>
-              <div className="flex gap-1 p-1 bg-clan-surface rounded-lg">
-                <button
-                  onClick={() => setMode('signin')}
-                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
-                    mode === 'signin' ? 'bg-clan-accent text-clan-darker' : 'text-clan-muted'
-                  }`}
-                >
-                  Sign In
-                </button>
-                <button
-                  onClick={() => setMode('signup')}
-                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
-                    mode === 'signup' ? 'bg-clan-accent text-clan-darker' : 'text-clan-muted'
-                  }`}
-                >
-                  Sign Up
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-3">
-                {mode === 'signup' && (
-                  <div className="relative">
-                    <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clan-muted" />
-                    <input
-                      type="text"
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="Display name (optional)"
-                      className="input pl-9"
-                      maxLength={32}
-                    />
-                  </div>
-                )}
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clan-muted" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="email@example.com"
-                    className="input pl-9"
-                    autoComplete="email"
-                  />
-                </div>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clan-muted" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    minLength={6}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="input pl-9 pr-10"
-                    autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-                  />
+              {mode !== 'coc-signin' && mode !== 'coc-signup' && (
+                <div className="flex gap-1 p-1 bg-clan-surface rounded-lg">
                   <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-clan-muted hover:text-clan-text"
-                    tabIndex={-1}
+                    onClick={() => setMode('signin')}
+                    className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                      mode === 'signin' ? 'bg-clan-accent text-clan-darker' : 'text-clan-muted'
+                    }`}
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    Sign In
+                  </button>
+                  <button
+                    onClick={() => setMode('signup')}
+                    className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                      mode === 'signup' ? 'bg-clan-accent text-clan-darker' : 'text-clan-muted'
+                    }`}
+                  >
+                    Sign Up
                   </button>
                 </div>
+              )}
 
-                {mode === 'signin' && (
-                  <div className="flex justify-end">
+              {mode !== 'coc-signin' && mode !== 'coc-signup' && (
+                <form onSubmit={handleSubmit} className="space-y-3">
+                  {mode === 'signup' && (
+                    <div className="relative">
+                      <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clan-muted" />
+                      <input
+                        type="text"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        placeholder="Display name (optional)"
+                        className="input pl-9"
+                        maxLength={32}
+                      />
+                    </div>
+                  )}
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clan-muted" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="email@example.com"
+                      className="input pl-9"
+                      autoComplete="email"
+                    />
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clan-muted" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="input pl-9 pr-10"
+                      autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                    />
                     <button
                       type="button"
-                      onClick={() => { setMode('forgot'); setError(null) }}
-                      className="text-xs text-clan-accent hover:text-clan-gold"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-clan-muted hover:text-clan-text"
+                      tabIndex={-1}
                     >
-                      Forgot password?
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                )}
 
-                {error && (
-                  <div className="text-xs text-red-300 bg-red-900/20 border border-red-700/50 rounded-lg p-2">
-                    {error}
-                  </div>
-                )}
-
-                <button type="submit" disabled={submitting} className="btn-primary w-full">
-                  {submitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : mode === 'signin' ? (
-                    'Sign In'
-                  ) : (
-                    'Create Account'
+                  {mode === 'signin' && (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => { setMode('forgot'); setError(null) }}
+                        className="text-xs text-clan-accent hover:text-clan-gold"
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
                   )}
-                </button>
-              </form>
+
+                  {error && (
+                    <div className="text-xs text-red-300 bg-red-900/20 border border-red-700/50 rounded-lg p-2">
+                      {error}
+                    </div>
+                  )}
+
+                  <button type="submit" disabled={submitting} className="btn-primary w-full">
+                    {submitting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : mode === 'signin' ? (
+                      'Sign In'
+                    ) : (
+                      'Create Account'
+                    )}
+                  </button>
+                </form>
+              )}
 
               {/* ── COC TAG SIGN IN / SIGN UP ─────────────── */}
               {/* Only render this section if the backend confirms the */}
@@ -365,7 +369,7 @@ export default function Login() {
                           required
                           value={cocTag}
                           onChange={(e) => setCocTag(e.target.value)}
-                          placeholder="#P8L8Y0QJ"
+                          placeholder="P8L8Y0QJ"
                           className="input pl-9"
                           autoCapitalize="characters"
                           autoCorrect="off"
